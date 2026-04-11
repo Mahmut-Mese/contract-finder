@@ -4,24 +4,64 @@ import type { AdzunaJob, AdzunaResponse } from '@/types/job';
 
 const ADZUNA_BASE = 'https://api.adzuna.com/v1/api/jobs';
 const COUNTRY = 'gb';
-const MAX_PAGES = 3;
 const RESULTS_PER_PAGE = 50;
 
-/** Hardcoded search profile for the Initial Phase spike */
-const SEARCH_PARAMS = {
-  what: 'software developer contract',
-  what_or: 'react node typescript fullstack backend frontend devops',
-  category: 'it-jobs',
-  sort_by: 'date',
-  max_days_old: '1',
-  results_per_page: String(RESULTS_PER_PAGE),
-} as const;
+/**
+ * Hardcoded search queries for the Initial Phase spike.
+ * We keep these broad (no "contract" in what — it filters out too many results).
+ * Contract filtering happens post-fetch via title/description/contract_type.
+ */
+const SEARCH_QUERIES = [
+  'javascript developer',
+  'typescript developer',
+  'react developer',
+  'node developer',
+  'fullstack developer',
+  'backend developer',
+  'frontend developer',
+  'devops engineer',
+  'software engineer',
+  'python developer',
+  'java developer',
+  'cloud engineer',
+  '.net developer',
+];
+
+/** Words in title/description that indicate a contract role */
+const CONTRACT_SIGNALS = [
+  'contract',
+  'contractor',
+  'freelance',
+  'outside ir35',
+  'inside ir35',
+  'ir35',
+  'day rate',
+  'per day',
+  '/day',
+  'fixed term',
+  'fixed-term',
+  '6 month',
+  '12 month',
+  '3 month',
+];
+
+/**
+ * Check if a job looks like a contract role based on its metadata.
+ */
+function looksLikeContract(job: AdzunaJob): boolean {
+  // Explicit contract_type from Adzuna
+  if (job.contract_type === 'contract') return true;
+
+  // Check title and description for contract signals
+  const text = `${job.title} ${job.description}`.toLowerCase();
+  return CONTRACT_SIGNALS.some((signal) => text.includes(signal));
+}
 
 /**
  * Fetch a single page of Adzuna job results.
  * Pages are 1-indexed in the Adzuna API.
  */
-async function fetchPage(page: number): Promise<AdzunaResponse> {
+async function fetchPage(searchQuery: string, page: number): Promise<AdzunaResponse> {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
 
@@ -32,16 +72,15 @@ async function fetchPage(page: number): Promise<AdzunaResponse> {
   const url = new URL(`${ADZUNA_BASE}/${COUNTRY}/search/${page}`);
   url.searchParams.set('app_id', appId);
   url.searchParams.set('app_key', appKey);
+  url.searchParams.set('results_per_page', String(RESULTS_PER_PAGE));
+  url.searchParams.set('what', searchQuery);
+  url.searchParams.set('content-type', 'application/json');
+  url.searchParams.set('sort_by', 'date');
+  url.searchParams.set('max_days_old', '3');
 
-  for (const [key, value] of Object.entries(SEARCH_PARAMS)) {
-    url.searchParams.set(key, value);
-  }
+  console.log(`[adzuna] Fetching "${searchQuery}" page ${page}`);
 
-  console.log(`[adzuna] Fetching page ${page}: ${url.toString().replace(appKey, '***')}`);
-
-  const res = await fetch(url.toString(), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const res = await fetch(url.toString());
 
   if (!res.ok) {
     const body = await res.text();
@@ -53,33 +92,49 @@ async function fetchPage(page: number): Promise<AdzunaResponse> {
 
 /**
  * Fetch UK developer contract jobs from Adzuna.
- * Fetches up to MAX_PAGES pages (150 jobs max) to stay within free tier limits.
- * Returns the raw AdzunaJob array.
+ *
+ * Strategy:
+ *  1. Run each search query (page 1 only = 13 API calls, well within 250/day limit)
+ *  2. Deduplicate in memory by job ID
+ *  3. Filter to jobs that look like contracts
+ *  4. Return the filtered list for DB insertion
  */
 export async function fetchAdzunaJobs(): Promise<AdzunaJob[]> {
   const allJobs: AdzunaJob[] = [];
+  const seenIds = new Set<string>();
+  let totalRaw = 0;
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  for (const searchQuery of SEARCH_QUERIES) {
     try {
-      const data = await fetchPage(page);
+      const data = await fetchPage(searchQuery, 1);
       const jobs = data.results || [];
-      allJobs.push(...jobs);
+      totalRaw += jobs.length;
 
-      console.log(`[adzuna] Page ${page}: ${jobs.length} jobs (total so far: ${allJobs.length})`);
-
-      // Stop if we've received fewer results than a full page (no more pages)
-      if (jobs.length < RESULTS_PER_PAGE) {
-        console.log('[adzuna] No more pages available');
-        break;
+      // In-memory dedup
+      let added = 0;
+      for (const job of jobs) {
+        const id = String(job.id);
+        if (!seenIds.has(id)) {
+          seenIds.add(id);
+          allJobs.push(job);
+          added++;
+        }
       }
+
+      console.log(
+        `[adzuna] "${searchQuery}": ${jobs.length} results, ${added} unique new (total unique: ${allJobs.length})`
+      );
     } catch (err) {
-      console.error(`[adzuna] Error fetching page ${page}:`, err);
-      // If the first page fails, throw. Otherwise return what we have.
-      if (page === 1) throw err;
-      break;
+      console.error(`[adzuna] Error fetching "${searchQuery}":`, err);
+      // Continue with other queries even if one fails
     }
   }
 
-  console.log(`[adzuna] Total jobs fetched: ${allJobs.length}`);
-  return allJobs;
+  // Filter for contract-looking jobs
+  const contracts = allJobs.filter(looksLikeContract);
+
+  console.log(
+    `[adzuna] Done: ${totalRaw} raw → ${allJobs.length} unique → ${contracts.length} contracts`
+  );
+  return contracts;
 }

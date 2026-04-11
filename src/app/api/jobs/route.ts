@@ -23,7 +23,7 @@ export async function GET(request: Request) {
        FROM jobs 
        ORDER BY fetched_at DESC, posted_at DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [String(limit), String(offset)]
     );
 
     const [countRow] = await query<RowDataPacket[]>(
