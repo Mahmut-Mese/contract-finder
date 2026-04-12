@@ -26,3 +26,17 @@ Contract Finder is the first module of a larger job ecosystem focused on helping
 3. `contract-antigravity-gemini-3` completes the remaining implementation work.
 4. `contract-test-free` runs smoke and e2e checks.
 5. `contract-openai-gpt5-4` reviews code quality and risks.
+
+## SDLC Testing Commands
+
+Before E2E:
+- Check server on port 4000: `lsof -ti:4000`
+
+Primary E2E command:
+- `npx playwright test e2e/smoke.spec.ts --reporter=list`
+
+Package script:
+- `npm run test:e2e`
+
+SDLC rule:
+- After a task or implementation slice is finished, run E2E verification before calling it done.

@@ -33,8 +33,15 @@ All project agents use the `contract-` prefix to avoid collisions with built-in 
 1. `contract-architect-opus` defines or refines the current implementation slice.
 2. `contract-code-writer-free-model` handles simple scoped implementation first when possible.
 3. `contract-antigravity-gemini-3` completes remaining integration-heavy work.
-4. `contract-test-free` verifies runtime health after each meaningful batch.
+4. `contract-test-free` verifies runtime health after each meaningful batch and after each finished task.
 5. `contract-openai-gpt5-4` reviews correctness and maintainability before completion.
+
+## SDLC Test Commands
+
+1. Server check: `lsof -ti:4000`
+2. Primary E2E smoke run: `npx playwright test e2e/smoke.spec.ts --reporter=list`
+3. Package script alternative: `npm run test:e2e`
+4. Completion rule: do not mark a task complete until the relevant E2E verification has been run and assessed.
 
 ## Model Selection Strategy
 
@@ -54,4 +61,4 @@ All project agents use the `contract-` prefix to avoid collisions with built-in 
 4. Prefer the smallest correct implementation that fits Next.js fullstack + Supabase + low-cost hosting.
 5. Avoid speculative abstractions until the Phase 0 flow is proven.
 6. Prefer vertical slices that can be tested quickly.
-7. Do not call work complete until implementation, testing, and review are all covered.
+7. Do not call work complete until implementation, E2E testing, and review are all covered.

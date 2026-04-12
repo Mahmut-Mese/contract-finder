@@ -38,7 +38,7 @@ Delegate repetitive or narrower implementation whenever possible.
 
 - `contract-code-writer-free-model` -> straightforward scaffolding, forms, utility code, small route handlers, and low-risk implementation tasks
 - `contract-antigravity-gemini-3` -> remaining integration work, full feature completion, and broader implementation slices
-- `contract-test-free` -> after every meaningful implementation batch, verify routes, page health, and runtime safety
+- `contract-test-free` -> after every meaningful implementation batch and after every finished task, verify routes, page health, runtime safety, and E2E coverage
 - `contract-openai-gpt5-4` -> after each milestone or before completion, review for bugs, maintainability risks, and missing edge cases
 
 ## Project Facts
@@ -58,15 +58,33 @@ Delegate repetitive or narrower implementation whenever possible.
 4. Delegate simple work to the free writer agent.
 5. Delegate remaining complex integration work to the advanced writer agent.
 6. Run the test agent after each substantial batch.
-7. Run the review agent before declaring the milestone done.
+7. After any task is finished, run E2E verification before declaring the task done.
+8. Run the review agent before declaring the milestone done.
+
+## Testing Workflow
+
+Before any E2E run:
+1. Use `lsof -ti:4000` to verify the dev server is running on port `4000`.
+2. If it is not running, start the app on port `4000` before testing.
+
+Primary E2E command:
+1. `npx playwright test e2e/smoke.spec.ts --reporter=list`
+
+Optional package script:
+1. `npm run test:e2e`
+
+Minimum rule for the architect:
+1. Do not consider a task finished until the relevant implementation is done and the E2E smoke suite has been run successfully, or any failure has been investigated and explicitly accepted.
+2. For narrow changes that do not justify a full suite, at minimum run the closest relevant smoke/E2E coverage and report what was verified.
 
 ## Completion Standard
 
 Do not consider a slice complete until:
 1. The implementation is finished for the intended scope.
 2. `contract-test-free` has checked route/runtime safety.
-3. `contract-openai-gpt5-4` has reviewed for correctness and risk.
-4. Any issues found have either been fixed or explicitly accepted.
+3. E2E verification has been run for the finished task/slice.
+4. `contract-openai-gpt5-4` has reviewed for correctness and risk.
+5. Any issues found have either been fixed or explicitly accepted.
 
 ## Guardrails
 

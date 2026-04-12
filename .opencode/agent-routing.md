@@ -8,7 +8,7 @@
 
 1. `contract-code-writer-free-model` -> simple pages, forms, shared UI, type definitions, route handlers, and low-risk scaffolding
 2. `contract-antigravity-gemini-3` -> more complex integration work, full feature completion, persistence wiring, and remaining implementation gaps
-3. `contract-test-free` -> smoke tests, route checks, browser console verification, and server runtime verification
+3. `contract-test-free` -> smoke tests, route checks, browser console verification, server runtime verification, and Playwright E2E verification after finished tasks
 4. `contract-openai-gpt5-4` -> code review after each milestone, regression finding, maintainability review, and release-readiness checks
 
 ## Model Selection Strategy
@@ -17,7 +17,7 @@
 2. Use `contract-code-writer-free-model` for lower-cost, narrower implementation tasks once requirements are already stable.
 3. Use `contract-antigravity-gemini-3` for integration-heavy work and broader implementation completion.
 4. If Antigravity tokens are unavailable, use Copilot Sonnet for the `contract-antigravity-gemini-3` role.
-5. Use `contract-test-free` liberally after each implementation batch.
+5. Use `contract-test-free` liberally after each implementation batch and after each finished task.
 6. Use `contract-openai-gpt5-4` when correctness, maintainability, and real bug-risk review matter more than speed.
 
 ## Phase Mapping
@@ -61,3 +61,10 @@ Current expectation:
 1. Preserve the roadmap order from `SUPERGROK-PLAN.md`.
 2. Do not skip directly to Phase 1 or later features before Phase 0 is complete.
 3. Keep the active slice narrow enough for fast testing and review.
+4. After finishing a task, run E2E verification before calling the task complete.
+
+## Standard E2E Commands
+
+1. Check server: `lsof -ti:4000`
+2. Run smoke suite: `npx playwright test e2e/smoke.spec.ts --reporter=list`
+3. Alternate script: `npm run test:e2e`
