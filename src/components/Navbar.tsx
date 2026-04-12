@@ -6,10 +6,12 @@ import { useState, useEffect } from 'react';
 export default function Navbar() {
   const { data: session, status } = useSession();
   const isAuth = status === 'authenticated';
+  const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin ?? false;
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!isAuth) return;
+    // Only poll notifications for regular users, not admins
+    if (!isAuth || isAdmin) return;
 
     const fetchUnread = async () => {
       try {
@@ -27,7 +29,7 @@ export default function Navbar() {
     // Poll every 60 seconds for new notifications
     const interval = setInterval(fetchUnread, 60_000);
     return () => clearInterval(interval);
-  }, [isAuth]);
+  }, [isAuth, isAdmin]);
 
   return (
     <nav style={navStyle}>
@@ -37,20 +39,25 @@ export default function Navbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
         {isAuth ? (
           <>
-            <a href="/dashboard" style={navLinkStyle}>Dashboard</a>
-            <a href="/profile" style={navLinkStyle}>Profile</a>
-            <a href="/applications" style={navLinkStyle}>Applications</a>
-            <a href="/history" style={navLinkStyle}>History</a>
-            <a href="/notifications" style={{ ...navLinkStyle, position: 'relative' }}>
-              Notifications
-              {unreadCount > 0 && (
-                <span style={badgeStyle}>
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </a>
-            {(session?.user as { isAdmin?: boolean } | undefined)?.isAdmin && (
+            {isAdmin ? (
+              /* Admin nav: only Admin link */
               <a href="/admin" style={navLinkStyle}>Admin</a>
+            ) : (
+              /* Regular user nav */
+              <>
+                <a href="/dashboard" style={navLinkStyle}>Dashboard</a>
+                <a href="/profile" style={navLinkStyle}>Profile</a>
+                <a href="/applications" style={navLinkStyle}>Applications</a>
+                <a href="/history" style={navLinkStyle}>History</a>
+                <a href="/notifications" style={{ ...navLinkStyle, position: 'relative' }}>
+                  Notifications
+                  {unreadCount > 0 && (
+                    <span style={badgeStyle}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </a>
+              </>
             )}
             <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{session?.user?.email}</span>
             <button

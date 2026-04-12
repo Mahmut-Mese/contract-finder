@@ -42,7 +42,8 @@ export default function DashboardPage() {
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchFilter, setMatchFilter] = useState<string>(''); // '' = all except dismissed
-  const [hasCv, setHasCv] = useState(false);
+  const [page, setPage] = useState(0); // 0-indexed page number
+  const PAGE_SIZE = 10;
 
   const loadProfile = useCallback(async () => {
     try {
@@ -61,7 +62,7 @@ export default function DashboardPage() {
   const loadMatches = useCallback(async () => {
     setMatchesLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
       if (matchFilter) params.set('status', matchFilter);
       const res = await fetch(`/api/matches?${params}`);
       if (!res.ok) throw new Error('Failed to load matches');
@@ -73,7 +74,7 @@ export default function DashboardPage() {
     } finally {
       setMatchesLoading(false);
     }
-  }, [matchFilter]);
+  }, [matchFilter, page]);
 
   useEffect(() => {
     loadProfile();
@@ -82,21 +83,6 @@ export default function DashboardPage() {
   useEffect(() => {
     loadMatches();
   }, [loadMatches]);
-
-  // Check if user has a CV uploaded (for one-click apply)
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/cv');
-        if (res.ok) {
-          const data = await res.json();
-          setHasCv(!!data.cv);
-        }
-      } catch {
-        // Non-critical
-      }
-    })();
-  }, []);
 
   const toggleFinder = async () => {
     if (!profile) return;
@@ -140,37 +126,9 @@ export default function DashboardPage() {
     }
   };
 
-  const applyToJob = async (matchId: number, redirectUrl: string | null): Promise<void> => {
-    try {
-      const res = await fetch('/api/applications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Failed to apply');
-        return;
-      }
-      // Update match status in UI
-      setMatches((prev) =>
-        prev.map((m) => (m.match_id === matchId ? { ...m, status: 'applied' } : m))
-      );
-      // Open external link so user can complete application
-      if (redirectUrl) {
-        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
-      }
-    } catch (err) {
-      console.error('Failed to apply:', err);
-      alert('Failed to apply. Please try again.');
-    }
-  };
-
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'var(--font-geist-sans)' }}>Loading...</div>;
   }
-
-  const hasProfile = profile?.skills && profile.skills.length > 0;
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem', fontFamily: 'var(--font-geist-sans)' }}>
@@ -213,46 +171,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Profile Summary */}
-      {!hasProfile ? (
-        <div style={{ ...cardStyle, textAlign: 'center' }}>
-          <p style={{ fontSize: '1rem', color: '#6b7280', marginBottom: '1rem' }}>
-            Complete your profile to start receiving contract matches.
-          </p>
-          <a href="/profile" style={ctaStyle}>
-            Complete Profile
-          </a>
-        </div>
-      ) : (
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Profile Summary</h2>
-            <a href="/profile" style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 500 }}>
-              Edit
-            </a>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <SummaryItem label="Skills" value={profile?.skills} />
-            <SummaryItem
-              label="Day Rate"
-              value={
-                profile?.min_rate || profile?.max_rate
-                  ? `£${profile?.min_rate ?? '?'} – £${profile?.max_rate ?? '?'}`
-                  : null
-              }
-            />
-            <SummaryItem label="Location" value={profile?.location} />
-            <SummaryItem label="Remote" value={profile?.remote_preference} />
-            <SummaryItem label="Contract Length" value={profile?.contract_length} />
-            <SummaryItem
-              label="Fingerprint"
-              value={profile?.search_fingerprint ? profile.search_fingerprint.slice(0, 12) + '...' : null}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Matched Jobs */}
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -260,10 +178,10 @@ export default function DashboardPage() {
             Matched Contracts {matchTotal > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({matchTotal})</span>}
           </h2>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {['', 'new', 'saved', 'applied'].map((f) => (
+            {['', 'new', 'saved'].map((f) => (
               <button
                 key={f}
-                onClick={() => setMatchFilter(f)}
+                onClick={() => { setMatchFilter(f); setPage(0); }}
                 style={{
                   ...filterBtnStyle,
                   background: matchFilter === f ? '#2563eb' : 'white',
@@ -281,23 +199,54 @@ export default function DashboardPage() {
         ) : matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
             <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
-              {hasProfile
+              {(profile?.skills?.length ?? 0) > 0
                 ? 'No matches yet. Matches are generated automatically when new contracts are found.'
                 : 'Complete your profile to start receiving matches.'}
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {matches.map((match) => (
-              <MatchCard
-                key={match.match_id}
-                match={match}
-                hasCv={hasCv}
-                onStatusChange={updateMatchStatus}
-                onApply={applyToJob}
-              />
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {matches.map((match) => (
+                <MatchCard
+                  key={match.match_id}
+                  match={match}
+                  onStatusChange={updateMatchStatus}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {matchTotal > PAGE_SIZE && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6' }}>
+                <button
+                  onClick={() => setPage((p) => p - 1)}
+                  disabled={page === 0}
+                  style={{
+                    ...paginationBtnStyle,
+                    opacity: page === 0 ? 0.4 : 1,
+                    cursor: page === 0 ? 'default' : 'pointer',
+                  }}
+                >
+                  ← Previous
+                </button>
+                <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                  Page {page + 1} of {Math.ceil(matchTotal / PAGE_SIZE)}
+                </span>
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={(page + 1) * PAGE_SIZE >= matchTotal}
+                  style={{
+                    ...paginationBtnStyle,
+                    opacity: (page + 1) * PAGE_SIZE >= matchTotal ? 0.4 : 1,
+                    cursor: (page + 1) * PAGE_SIZE >= matchTotal ? 'default' : 'pointer',
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -316,16 +265,11 @@ export default function DashboardPage() {
 
 function MatchCard({
   match,
-  hasCv,
   onStatusChange,
-  onApply,
 }: {
   match: MatchedJob;
-  hasCv: boolean;
   onStatusChange: (matchId: number, status: string) => void;
-  onApply: (matchId: number, redirectUrl: string | null) => Promise<void>;
 }) {
-  const [applying, setApplying] = useState(false);
   const scoreColor =
     match.score >= 50 ? '#16a34a' : match.score >= 25 ? '#d97706' : '#9ca3af';
 
@@ -333,15 +277,6 @@ function MatchCard({
     match.salary_min || match.salary_max
       ? `£${Math.round((match.salary_min || 0) / 220)}-${Math.round((match.salary_max || 0) / 220)}/day`
       : null;
-
-  const handleApply = async () => {
-    setApplying(true);
-    try {
-      await onApply(match.match_id, match.redirect_url);
-    } finally {
-      setApplying(false);
-    }
-  };
 
   return (
     <div
@@ -418,7 +353,7 @@ function MatchCard({
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        {match.status !== 'saved' && match.status !== 'applied' && (
+        {match.status !== 'saved' && (
           <button
             onClick={() => onStatusChange(match.match_id, 'saved')}
             style={actionBtnStyle}
@@ -429,71 +364,29 @@ function MatchCard({
         {match.status === 'saved' && (
           <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Saved</span>
         )}
-        {match.status !== 'applied' && (
-          <button
-            onClick={() => onStatusChange(match.match_id, 'dismissed')}
-            style={{ ...actionBtnStyle, color: '#9ca3af' }}
-          >
-            Dismiss
-          </button>
-        )}
-        {match.status === 'applied' ? (
-          <span style={{
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color: 'white',
-            background: '#16a34a',
-            padding: '0.125rem 0.5rem',
-            borderRadius: 12,
-          }}>
-            Applied
-          </span>
-        ) : hasCv ? (
-          <button
-            onClick={handleApply}
-            disabled={applying}
-            style={{
-              ...actionBtnStyle,
-              color: 'white',
-              background: '#2563eb',
-              padding: '0.25rem 0.75rem',
-              borderRadius: 6,
-              fontWeight: 600,
-            }}
-          >
-            {applying ? 'Applying...' : 'Apply'}
-          </button>
-        ) : match.redirect_url ? (
+        <button
+          onClick={() => onStatusChange(match.match_id, 'dismissed')}
+          style={{ ...actionBtnStyle, color: '#9ca3af' }}
+        >
+          Dismiss
+        </button>
+        {match.redirect_url && (
           <a
             href={match.redirect_url}
             target="_blank"
             rel="noopener noreferrer"
             style={{ ...actionBtnStyle, textDecoration: 'none', color: '#2563eb' }}
-            title="Upload your CV on the Profile page to apply directly"
             onClick={() => {
               if (match.status === 'new') onStatusChange(match.match_id, 'viewed');
             }}
           >
-            Apply ↗
+            Go to Website ↗
           </a>
-        ) : null}
+        )}
         <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#d1d5db' }}>
           {match.posted_at ? new Date(match.posted_at).toLocaleDateString() : ''}
         </span>
       </div>
-    </div>
-  );
-}
-
-function SummaryItem({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-      </span>
-      <p style={{ margin: '0.125rem 0 0', fontSize: '0.875rem', color: value ? '#111827' : '#d1d5db' }}>
-        {value || 'Not set'}
-      </p>
     </div>
   );
 }
@@ -542,17 +435,6 @@ const toggleKnobStyle: React.CSSProperties = {
   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
 };
 
-const ctaStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0.75rem 1.5rem',
-  background: '#2563eb',
-  color: 'white',
-  borderRadius: 6,
-  textDecoration: 'none',
-  fontWeight: 600,
-  fontSize: '0.875rem',
-};
-
 const filterBtnStyle: React.CSSProperties = {
   padding: '0.25rem 0.75rem',
   border: '1px solid #d1d5db',
@@ -570,4 +452,14 @@ const actionBtnStyle: React.CSSProperties = {
   fontWeight: 500,
   color: '#374151',
   padding: '0.25rem 0',
+};
+
+const paginationBtnStyle: React.CSSProperties = {
+  background: 'white',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  padding: '0.375rem 0.75rem',
+  fontSize: '0.8rem',
+  fontWeight: 500,
+  color: '#374151',
 };
