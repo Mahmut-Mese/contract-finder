@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
 
   if (!isValidCron) {
     const session = await auth();
-    if (!session?.user?.id) {
+    const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin;
+    if (!session?.user?.id || !isAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }

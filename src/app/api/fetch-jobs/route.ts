@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runFetchCycle } from '@/lib/pipeline';
 import { auth } from '@/lib/auth';
 
@@ -6,12 +6,20 @@ import { auth } from '@/lib/auth';
  * POST /api/fetch-jobs
  * 
  * Triggers a fetch cycle to pull jobs from Adzuna, normalize, and store them.
- * Requires an authenticated session.
+ * Requires admin session OR valid x-fetch-secret header (for cron jobs).
  */
-export async function POST() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST(req: NextRequest) {
+  // Check cron secret first (for automated/cron calls)
+  const fetchSecret = req.headers.get('x-fetch-secret');
+  const isValidSecret = fetchSecret && fetchSecret === process.env.FETCH_SECRET;
+
+  if (!isValidSecret) {
+    // Fall back to admin session check
+    const session = await auth();
+    const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin;
+    if (!session?.user?.id || !isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   try {

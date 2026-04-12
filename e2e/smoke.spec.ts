@@ -5,7 +5,7 @@ const BASE = 'http://localhost:4000';
 // ─── Page definitions ──────────────────────────────────────────────────────
 
 const PUBLIC_PAGES = ['/', '/login', '/signup'];
-const PROTECTED_PAGES = ['/dashboard', '/profile', '/notifications', '/history'];
+const PROTECTED_PAGES = ['/dashboard', '/profile', '/notifications', '/history', '/admin'];
 
 // API routes — expected status without auth
 const API_ROUTES: { path: string; method: 'GET' | 'POST'; expectedStatus: number }[] = [

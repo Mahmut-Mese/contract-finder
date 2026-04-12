@@ -83,6 +83,7 @@
 - Deduplication + basic matching/scoring  
 - Send in-app + email notifications  
 - Dashboard to view matches + history  
+- Admin/user role separation: `is_admin` flag, admin-only dashboard at `/admin`, protected admin API routes  
 **Reason**: This becomes the first real user-facing MVP once the job discovery engine and user foundation are both proven.
 
 **Phase 2: AI CV Tailoring (3–4 weeks, ~$10–30/month)**  

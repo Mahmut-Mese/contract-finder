@@ -30,23 +30,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) return null;
 
-        return { id: user.id, email: user.email };
+        return { id: user.id, email: user.email, isAdmin: Boolean(user.is_admin) };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // On initial sign-in, persist user id into the token
+      // On initial sign-in, persist user id and admin flag into the token
       if (user) {
         token.id = user.id;
+        token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false;
       }
       return token;
     },
     async session({ session, token }) {
-      // Expose user id in the session
+      // Expose user id and admin flag in the session
       if (token?.id) {
         session.user.id = token.id as string;
       }
+      (session.user as { isAdmin?: boolean }).isAdmin = (token.isAdmin as boolean) ?? false;
       return session;
     },
   },

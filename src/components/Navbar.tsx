@@ -48,7 +48,9 @@ export default function Navbar() {
                 </span>
               )}
             </a>
-            <a href="/" style={navLinkStyle}>Admin</a>
+            {(session?.user as { isAdmin?: boolean } | undefined)?.isAdmin && (
+              <a href="/admin" style={navLinkStyle}>Admin</a>
+            )}
             <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{session?.user?.email}</span>
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}

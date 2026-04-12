@@ -16,6 +16,7 @@
 | id | VARCHAR(36) PK | UUID, auto-generated |
 | email | VARCHAR(255) UNIQUE | User email (lowercased) |
 | password_hash | VARCHAR(255) | bcrypt hash |
+| is_admin | BOOLEAN | Admin flag (default: false) |
 | created_at | DATETIME | |
 | updated_at | DATETIME | Auto-updates |
 
@@ -46,14 +47,15 @@ src/
 │   │   ├── auth/[...nextauth]/route.ts   # Auth.js route handler
 │   │   ├── auth/signup/route.ts          # POST signup endpoint
 │   │   ├── profile/route.ts             # GET/PUT profile CRUD
-│   │   ├── fetch-jobs/route.ts          # (Initial Phase)
+│   │   ├── fetch-jobs/route.ts          # (Initial Phase, admin-only)
 │   │   ├── fetch-logs/route.ts          # (Initial Phase)
 │   │   └── jobs/route.ts               # (Initial Phase)
 │   ├── login/page.tsx                   # Login form
 │   ├── signup/page.tsx                  # Signup form
-│   ├── dashboard/page.tsx               # Profile summary + toggle
+│   ├── dashboard/page.tsx               # User dashboard (matches + toggle)
+│   ├── admin/page.tsx                   # Admin UI (admin-only, jobs/logs/pipeline)
 │   ├── profile/page.tsx                 # Edit profile form
-│   ├── page.tsx                         # Admin UI (Initial Phase)
+│   ├── page.tsx                         # Redirect: admin→/admin, user→/dashboard, anon→/login
 │   └── layout.tsx                       # SessionProvider + Navbar
 ├── components/
 │   ├── Navbar.tsx                       # Nav with auth state
@@ -72,13 +74,14 @@ src/
 
 ## Core Features
 
-1. **Authentication**: Auth.js v5, credentials provider, JWT sessions
+1. **Authentication**: Auth.js v5, credentials provider, JWT sessions (includes `isAdmin` flag)
 2. **Signup**: `POST /api/auth/signup` — email/password validation, bcrypt, auto-creates profile
 3. **Login/Logout**: `signIn`/`signOut` from next-auth/react, redirects to dashboard
 4. **Profile CRUD**: `GET/PUT /api/profile` — skills, rate, location, remote, contract length
 5. **Search Fingerprint**: SHA256 of normalized preferences, auto-regenerated on save
 6. **Contract Finder Toggle**: On/off switch on dashboard, persisted to DB
 7. **Route Protection**: Middleware checks for session cookie, redirects to `/login`
+8. **Admin Role**: `is_admin` flag on users, admin-only dashboard at `/admin`, admin-only API routes for fetch-jobs and cron/match
 
 ## Environment Variables
 
