@@ -40,6 +40,44 @@ export async function PUT(req: Request) {
       contract_finder_enabled,
     } = body;
 
+    const isNullableString = (value: unknown) =>
+      value === undefined || value === null || typeof value === 'string';
+
+    const parseNullableInt = (value: unknown, field: string) => {
+      if (value === undefined) return { ok: true as const, value: undefined };
+      if (value === null || value === '') return { ok: true as const, value: null };
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        return { ok: false as const, error: `${field} must be a non-negative number or null` };
+      }
+      return { ok: true as const, value: Math.round(value) };
+    };
+
+    if (!isNullableString(skills)) {
+      return NextResponse.json({ error: 'skills must be a string or null' }, { status: 400 });
+    }
+    if (!isNullableString(location)) {
+      return NextResponse.json({ error: 'location must be a string or null' }, { status: 400 });
+    }
+    if (!isNullableString(contract_length)) {
+      return NextResponse.json({ error: 'contract_length must be a string or null' }, { status: 400 });
+    }
+    if (contract_finder_enabled !== undefined && typeof contract_finder_enabled !== 'boolean') {
+      return NextResponse.json(
+        { error: 'contract_finder_enabled must be a boolean' },
+        { status: 400 }
+      );
+    }
+
+    const parsedMinRate = parseNullableInt(min_rate, 'min_rate');
+    if (!parsedMinRate.ok) {
+      return NextResponse.json({ error: parsedMinRate.error }, { status: 400 });
+    }
+
+    const parsedMaxRate = parseNullableInt(max_rate, 'max_rate');
+    if (!parsedMaxRate.ok) {
+      return NextResponse.json({ error: parsedMaxRate.error }, { status: 400 });
+    }
+
     // Validate remote_preference if provided
     const validRemoteOptions = ['remote', 'hybrid', 'onsite', 'any'];
     if (remote_preference !== undefined && remote_preference !== null && !validRemoteOptions.includes(remote_preference)) {
@@ -52,8 +90,8 @@ export async function PUT(req: Request) {
     // Build update data
     const updateData: Record<string, string | number | boolean | null> = {};
     if (skills !== undefined) updateData.skills = skills;
-    if (min_rate !== undefined) updateData.min_rate = min_rate;
-    if (max_rate !== undefined) updateData.max_rate = max_rate;
+    if (parsedMinRate.value !== undefined) updateData.min_rate = parsedMinRate.value;
+    if (parsedMaxRate.value !== undefined) updateData.max_rate = parsedMaxRate.value;
     if (location !== undefined) updateData.location = location;
     if (remote_preference !== undefined) updateData.remote_preference = remote_preference;
     if (contract_length !== undefined) updateData.contract_length = contract_length;
@@ -74,6 +112,18 @@ export async function PUT(req: Request) {
       remote_preference: (updateData.remote_preference ?? currentProfile.remote_preference) as string | null,
       contract_length: (updateData.contract_length ?? currentProfile.contract_length) as string | null,
     };
+
+    if (
+      merged.min_rate !== null &&
+      merged.max_rate !== null &&
+      merged.min_rate > merged.max_rate
+    ) {
+      return NextResponse.json(
+        { error: 'min_rate cannot be greater than max_rate' },
+        { status: 400 }
+      );
+    }
+
     updateData.search_fingerprint = generateFingerprint(merged);
 
     await updateProfile(session.user.id, updateData);

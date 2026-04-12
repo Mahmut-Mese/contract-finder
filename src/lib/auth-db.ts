@@ -43,6 +43,10 @@ export async function createUser(email: string, passwordHash: string): Promise<s
   return id;
 }
 
+export async function deleteUserById(id: string): Promise<void> {
+  await execute('DELETE FROM users WHERE id = ?', [id]);
+}
+
 // ── Profile queries ──
 
 export interface DbProfile {
