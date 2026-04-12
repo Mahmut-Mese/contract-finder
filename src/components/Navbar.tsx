@@ -39,6 +39,7 @@ export default function Navbar() {
           <>
             <a href="/dashboard" style={navLinkStyle}>Dashboard</a>
             <a href="/profile" style={navLinkStyle}>Profile</a>
+            <a href="/applications" style={navLinkStyle}>Applications</a>
             <a href="/history" style={navLinkStyle}>History</a>
             <a href="/notifications" style={{ ...navLinkStyle, position: 'relative' }}>
               Notifications

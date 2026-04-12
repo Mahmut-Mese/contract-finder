@@ -20,8 +20,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
-  const limit = Math.min(Number(searchParams.get('limit')) || 50, 100);
-  const offset = Number(searchParams.get('offset')) || 0;
+    const limit = Math.max(1, Math.min(Number(searchParams.get('limit')) || 50, 100));
+    const offset = Math.max(0, Number(searchParams.get('offset')) || 0);
 
   try {
     let whereClause = 'WHERE mj.user_id = ?';

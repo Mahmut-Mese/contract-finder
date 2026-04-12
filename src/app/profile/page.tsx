@@ -11,6 +11,13 @@ interface ProfileData {
   contract_length: string | null;
 }
 
+interface CvInfo {
+  id: number;
+  originalName: string;
+  fileSize: number;
+  createdAt: string;
+}
+
 export default function ProfilePage() {
   const [skills, setSkills] = useState('');
   const [minRate, setMinRate] = useState('');
@@ -22,6 +29,12 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [cv, setCv] = useState<CvInfo | null>(null);
+  const [cvLoading, setCvLoading] = useState(true);
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvDeleting, setCvDeleting] = useState(false);
+  const [cvError, setCvError] = useState<string | null>(null);
+  const [cvSuccess, setCvSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -43,6 +56,86 @@ export default function ProfilePage() {
       }
     })();
   }, []);
+
+  // Load CV info
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/cv');
+        if (!res.ok) throw new Error('Failed to load CV');
+        const data = await res.json();
+        setCv(data.cv || null);
+      } catch {
+        // Non-critical — CV section will show upload prompt
+      } finally {
+        setCvLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCvError(null);
+    setCvSuccess(null);
+    setCvUploading(true);
+
+    try {
+      if (file.type !== 'application/pdf') {
+        throw new Error('Only PDF files are allowed');
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('File too large. Maximum size is 5MB');
+      }
+
+      const formData = new FormData();
+      formData.append('cv', file);
+
+      const res = await fetch('/api/cv/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      setCv(data.cv);
+      setCvSuccess('CV uploaded successfully!');
+      setTimeout(() => setCvSuccess(null), 3000);
+    } catch (err) {
+      setCvError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setCvUploading(false);
+      // Reset file input
+      e.target.value = '';
+    }
+  };
+
+  const handleCvDelete = async () => {
+    if (!confirm('Are you sure you want to delete your CV?')) return;
+
+    setCvError(null);
+    setCvSuccess(null);
+    setCvDeleting(true);
+
+    try {
+      const res = await fetch('/api/cv', { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Delete failed');
+      }
+      setCv(null);
+      setCvSuccess('CV deleted');
+      setTimeout(() => setCvSuccess(null), 3000);
+    } catch (err) {
+      setCvError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setCvDeleting(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,6 +273,121 @@ export default function ProfilePage() {
           {saving ? 'Saving...' : 'Save Profile'}
         </button>
       </form>
+
+      {/* CV Upload Section */}
+      <div style={{ marginTop: '2rem', borderTop: '1px solid #e5e7eb', paddingTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Your CV</h2>
+
+        {cvError && <div style={errorStyle}>{cvError}</div>}
+        {cvSuccess && <div style={successStyle}>{cvSuccess}</div>}
+
+        {cvLoading ? (
+          <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Loading CV info...</p>
+        ) : cv ? (
+          <div style={{
+            border: '1px solid #e5e7eb',
+            borderRadius: 8,
+            padding: '1rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <div>
+              <p style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem' }}>{cv.originalName}</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>
+                {formatFileSize(cv.fileSize)} · Uploaded {new Date(cv.createdAt).toLocaleDateString('en-GB')}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <a
+                href="/api/cv/download"
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: '#374151',
+                  textDecoration: 'none',
+                  background: 'white',
+                }}
+              >
+                Download
+              </a>
+              <button
+                onClick={handleCvDelete}
+                disabled={cvDeleting}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: '1px solid #fca5a5',
+                  borderRadius: 6,
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: '#991b1b',
+                  background: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                {cvDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            border: '2px dashed #d1d5db',
+            borderRadius: 8,
+            padding: '2rem',
+            textAlign: 'center',
+          }}>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0 0 0.75rem' }}>
+              Upload your CV to enable one-click applications
+            </p>
+            <label style={{
+              display: 'inline-block',
+              padding: '0.5rem 1rem',
+              background: '#2563eb',
+              color: 'white',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}>
+              {cvUploading ? 'Uploading...' : 'Upload PDF'}
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={handleCvUpload}
+                disabled={cvUploading}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <p style={{ color: '#9ca3af', fontSize: '0.75rem', margin: '0.5rem 0 0' }}>
+              PDF only, max 5MB
+            </p>
+          </div>
+        )}
+
+        {/* Replace CV button when one exists */}
+        {cv && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <label style={{
+              fontSize: '0.8rem',
+              color: '#2563eb',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}>
+              {cvUploading ? 'Uploading...' : 'Replace with new CV'}
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={handleCvUpload}
+                disabled={cvUploading}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

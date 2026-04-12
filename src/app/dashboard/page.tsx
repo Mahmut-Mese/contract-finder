@@ -42,6 +42,7 @@ export default function DashboardPage() {
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchFilter, setMatchFilter] = useState<string>(''); // '' = all except dismissed
+  const [hasCv, setHasCv] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -82,6 +83,21 @@ export default function DashboardPage() {
     loadMatches();
   }, [loadMatches]);
 
+  // Check if user has a CV uploaded (for one-click apply)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/cv');
+        if (res.ok) {
+          const data = await res.json();
+          setHasCv(!!data.cv);
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, []);
+
   const toggleFinder = async () => {
     if (!profile) return;
     setToggling(true);
@@ -121,6 +137,32 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('Failed to update match:', err);
+    }
+  };
+
+  const applyToJob = async (matchId: number, redirectUrl: string | null): Promise<void> => {
+    try {
+      const res = await fetch('/api/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to apply');
+        return;
+      }
+      // Update match status in UI
+      setMatches((prev) =>
+        prev.map((m) => (m.match_id === matchId ? { ...m, status: 'applied' } : m))
+      );
+      // Open external link so user can complete application
+      if (redirectUrl) {
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      console.error('Failed to apply:', err);
+      alert('Failed to apply. Please try again.');
     }
   };
 
@@ -218,7 +260,7 @@ export default function DashboardPage() {
             Matched Contracts {matchTotal > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({matchTotal})</span>}
           </h2>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {['', 'new', 'saved'].map((f) => (
+            {['', 'new', 'saved', 'applied'].map((f) => (
               <button
                 key={f}
                 onClick={() => setMatchFilter(f)}
@@ -250,7 +292,9 @@ export default function DashboardPage() {
               <MatchCard
                 key={match.match_id}
                 match={match}
+                hasCv={hasCv}
                 onStatusChange={updateMatchStatus}
+                onApply={applyToJob}
               />
             ))}
           </div>
@@ -272,11 +316,16 @@ export default function DashboardPage() {
 
 function MatchCard({
   match,
+  hasCv,
   onStatusChange,
+  onApply,
 }: {
   match: MatchedJob;
+  hasCv: boolean;
   onStatusChange: (matchId: number, status: string) => void;
+  onApply: (matchId: number, redirectUrl: string | null) => Promise<void>;
 }) {
+  const [applying, setApplying] = useState(false);
   const scoreColor =
     match.score >= 50 ? '#16a34a' : match.score >= 25 ? '#d97706' : '#9ca3af';
 
@@ -284,6 +333,15 @@ function MatchCard({
     match.salary_min || match.salary_max
       ? `£${Math.round((match.salary_min || 0) / 220)}-${Math.round((match.salary_max || 0) / 220)}/day`
       : null;
+
+  const handleApply = async () => {
+    setApplying(true);
+    try {
+      await onApply(match.match_id, match.redirect_url);
+    } finally {
+      setApplying(false);
+    }
+  };
 
   return (
     <div
@@ -360,7 +418,7 @@ function MatchCard({
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        {match.status !== 'saved' && (
+        {match.status !== 'saved' && match.status !== 'applied' && (
           <button
             onClick={() => onStatusChange(match.match_id, 'saved')}
             style={actionBtnStyle}
@@ -371,25 +429,54 @@ function MatchCard({
         {match.status === 'saved' && (
           <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Saved</span>
         )}
-        <button
-          onClick={() => onStatusChange(match.match_id, 'dismissed')}
-          style={{ ...actionBtnStyle, color: '#9ca3af' }}
-        >
-          Dismiss
-        </button>
-        {match.redirect_url && (
+        {match.status !== 'applied' && (
+          <button
+            onClick={() => onStatusChange(match.match_id, 'dismissed')}
+            style={{ ...actionBtnStyle, color: '#9ca3af' }}
+          >
+            Dismiss
+          </button>
+        )}
+        {match.status === 'applied' ? (
+          <span style={{
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            color: 'white',
+            background: '#16a34a',
+            padding: '0.125rem 0.5rem',
+            borderRadius: 12,
+          }}>
+            Applied
+          </span>
+        ) : hasCv ? (
+          <button
+            onClick={handleApply}
+            disabled={applying}
+            style={{
+              ...actionBtnStyle,
+              color: 'white',
+              background: '#2563eb',
+              padding: '0.25rem 0.75rem',
+              borderRadius: 6,
+              fontWeight: 600,
+            }}
+          >
+            {applying ? 'Applying...' : 'Apply'}
+          </button>
+        ) : match.redirect_url ? (
           <a
             href={match.redirect_url}
             target="_blank"
             rel="noopener noreferrer"
             style={{ ...actionBtnStyle, textDecoration: 'none', color: '#2563eb' }}
+            title="Upload your CV on the Profile page to apply directly"
             onClick={() => {
               if (match.status === 'new') onStatusChange(match.match_id, 'viewed');
             }}
           >
-            Apply
+            Apply ↗
           </a>
-        )}
+        ) : null}
         <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#d1d5db' }}>
           {match.posted_at ? new Date(match.posted_at).toLocaleDateString() : ''}
         </span>

@@ -1,7 +1,7 @@
 ---
 description: Advanced implementation agent for Contract Finder. Use for integration-heavy work and remaining implementation after the basic pass.
 mode: subagent
-model: gemini-3
+model: google/antigravity-gemini-3.1-pro
 temperature: 0.1
 permission:
   edit: allow
@@ -16,7 +16,7 @@ You are permitted to make file changes, run shell commands, and utilize your ars
 
 You are an advanced implementation agent for Contract Finder.
 
-If Antigravity tokens are unavailable, continue this role using Copilot Sonnet.
+If Antigravity tokens are unavailable, continue this role using Gemini 3 Flash. If still no tokens, use Copilot models.
 
 ## Project Context
 
@@ -43,4 +43,4 @@ If Antigravity tokens are unavailable, continue this role using Copilot Sonnet.
 - Preserve project consistency.
 - Prefer completion over rewrite.
 - Keep implementation aligned with the active phase only.
-- If Antigravity tokens are unavailable, use Copilot Sonnet without changing scope.
+- If Antigravity tokens are unavailable, use Gemini 3 Flash. If still no tokens, use Copilot models, without changing scope.

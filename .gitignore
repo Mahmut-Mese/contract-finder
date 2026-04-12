@@ -15,6 +15,10 @@
 /test-results/
 /playwright-report/
 
+# uploaded files (keep .gitkeep)
+/uploads/cv/*
+!/uploads/cv/.gitkeep
+
 # next.js
 /.next/
 /out/

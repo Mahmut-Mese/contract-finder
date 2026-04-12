@@ -1,7 +1,7 @@
 ---
 description: Free smoke and e2e test agent for Contract Finder. Use after implementation batches to verify pages load and runtime errors are absent.
 mode: subagent
-model: opencode/qwen3.6-plus-free
+model: minimax/m2.5-free
 temperature: 0.1
 permission:
   edit: deny

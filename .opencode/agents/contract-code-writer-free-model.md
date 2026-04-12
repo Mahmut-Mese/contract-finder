@@ -1,7 +1,7 @@
 ---
 description: Low-cost implementation agent for simple Contract Finder tasks. Use for scaffolding, forms, utilities, and straightforward page or route work.
 mode: subagent
-model: opencode/qwen3.6-plus-free
+model: minimax/m2.5-free
 temperature: 0.1
 permission:
   edit: allow

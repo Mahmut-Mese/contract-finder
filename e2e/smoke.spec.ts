@@ -5,7 +5,7 @@ const BASE = 'http://localhost:4000';
 // ─── Page definitions ──────────────────────────────────────────────────────
 
 const PUBLIC_PAGES = ['/', '/login', '/signup'];
-const PROTECTED_PAGES = ['/dashboard', '/profile', '/notifications', '/history', '/admin'];
+const PROTECTED_PAGES = ['/dashboard', '/profile', '/notifications', '/history', '/applications', '/admin'];
 
 // API routes — expected status without auth
 const API_ROUTES: { path: string; method: 'GET' | 'POST'; expectedStatus: number }[] = [
@@ -15,6 +15,8 @@ const API_ROUTES: { path: string; method: 'GET' | 'POST'; expectedStatus: number
   { path: '/api/profile', method: 'GET', expectedStatus: 401 },
   { path: '/api/matches', method: 'GET', expectedStatus: 401 },
   { path: '/api/notifications', method: 'GET', expectedStatus: 401 },
+  { path: '/api/cv', method: 'GET', expectedStatus: 401 },
+  { path: '/api/applications', method: 'GET', expectedStatus: 401 },
   { path: '/api/cron/match', method: 'GET', expectedStatus: 200 },
   { path: '/api/fetch-jobs', method: 'POST', expectedStatus: 401 },
 ];
@@ -33,6 +35,8 @@ const IGNORED_CONSOLE_PATTERNS = [
   // Dashboard fetch aborts when navigating away before it completes (Playwright artifact)
   /Failed to load matches:.*Failed to fetch/,
   /Failed to load profile:.*Failed to fetch/,
+  /Failed to load CV:.*Failed to fetch/,
+  /Failed to load applications:.*Failed to fetch/,
 ];
 
 function isIgnored(text: string): boolean {
