@@ -78,7 +78,7 @@
 - Basic dashboard  
 **Reason**: Creates the essential user base layer after the job pipeline is validated, while still keeping the scope narrow and low-cost.
 
-**Phase 1: Hourly Smart Notifications (3–5 weeks, ~$0–20/month)**  
+**Phase 1: Hourly Smart Notifications (3–5 weeks, ~$0–20/month)** ✅ COMPLETE
 - Pull new contracts hourly based on fingerprints  
 - Deduplication + basic matching/scoring  
 - Send in-app + email notifications  

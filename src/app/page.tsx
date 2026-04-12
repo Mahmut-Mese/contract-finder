@@ -30,14 +30,28 @@ interface FetchLog {
   error_message: string | null;
 }
 
+interface MatchLog {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  users_processed: number;
+  matches_created: number;
+  emails_sent: number;
+  status: string;
+  error_message: string | null;
+}
+
 export default function AdminPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [logs, setLogs] = useState<FetchLog[]>([]);
+  const [fetchLogs, setFetchLogs] = useState<FetchLog[]>([]);
+  const [matchLogs, setMatchLogs] = useState<MatchLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
+  const [matching, setMatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'jobs' | 'logs'>('jobs');
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<'jobs' | 'fetch-logs' | 'match-logs'>('jobs');
 
   const loadJobs = useCallback(async () => {
     try {
@@ -51,23 +65,33 @@ export default function AdminPage() {
     }
   }, []);
 
-  const loadLogs = useCallback(async () => {
+  const loadFetchLogs = useCallback(async () => {
     try {
       const res = await fetch('/api/fetch-logs');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setLogs(data.logs);
+      setFetchLogs(data.logs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load logs');
+      setError(err instanceof Error ? err.message : 'Failed to load fetch logs');
+    }
+  }, []);
+
+  const loadMatchLogs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/match-logs');
+      const data = await res.json();
+      if (!data.error) setMatchLogs(data.logs || []);
+    } catch {
+      // Non-critical — silently ignore if endpoint not yet available
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    await Promise.all([loadJobs(), loadLogs()]);
+    await Promise.all([loadJobs(), loadFetchLogs(), loadMatchLogs()]);
     setLoading(false);
-  }, [loadJobs, loadLogs]);
+  }, [loadJobs, loadFetchLogs, loadMatchLogs]);
 
   useEffect(() => {
     loadAll();
@@ -76,26 +100,41 @@ export default function AdminPage() {
   const triggerFetch = async () => {
     setFetching(true);
     setError(null);
+    setSuccessMsg(null);
     try {
-      const res = await fetch('/api/fetch-jobs', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${prompt('Enter fetch secret (FETCH_SECRET):') || 'dev-secret'}`,
-        },
-      });
+      const res = await fetch('/api/fetch-jobs', { method: 'POST' });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      alert(
-        `Fetch complete!\n` +
-        `Jobs fetched: ${data.jobsFetched}\n` +
-        `New: ${data.jobsNew}\n` +
-        `Duplicates: ${data.jobsDuplicate}`
+      setSuccessMsg(
+        `Fetch complete — fetched: ${data.jobsFetched}, new: ${data.jobsNew}, dupes: ${data.jobsDuplicate}`
       );
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fetch failed');
     } finally {
       setFetching(false);
+    }
+  };
+
+  const triggerMatch = async () => {
+    setMatching(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch('/api/cron/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setSuccessMsg(
+        `Matching complete — users: ${data.usersProcessed}, matches: ${data.matchesCreated}, emails: ${data.emailsSent}`
+      );
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Match pipeline failed');
+    } finally {
+      setMatching(false);
     }
   };
 
@@ -110,62 +149,84 @@ export default function AdminPage() {
   const formatDate = (d: string | null) => {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     });
   };
+
+  const statusBadge = (status: string) => (
+    <span style={{
+      padding: '2px 8px',
+      borderRadius: 12,
+      fontSize: '0.75rem',
+      fontWeight: 600,
+      background: status === 'completed' ? '#dcfce7' : status === 'failed' ? '#fef2f2' : '#fef9c3',
+      color: status === 'completed' ? '#166534' : status === 'failed' ? '#991b1b' : '#854d0e',
+    }}>
+      {status}
+    </span>
+  );
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem', fontFamily: 'var(--font-geist-sans)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Contract Finder — Admin</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            onClick={loadAll}
-            disabled={loading}
-            style={btnStyle}
-          >
+          <button onClick={loadAll} disabled={loading} style={btnStyle}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
           <button
             onClick={triggerFetch}
-            disabled={fetching}
+            disabled={fetching || matching}
             style={{ ...btnStyle, background: '#2563eb', color: 'white' }}
           >
-            {fetching ? 'Fetching...' : 'Trigger Fetch'}
+            {fetching ? 'Fetching...' : 'Fetch Jobs'}
+          </button>
+          <button
+            onClick={triggerMatch}
+            disabled={fetching || matching}
+            style={{ ...btnStyle, background: '#16a34a', color: 'white' }}
+          >
+            {matching ? 'Matching...' : 'Run Matching'}
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{ padding: '0.75rem', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, marginBottom: '1rem', color: '#991b1b' }}>
+        <div style={{ padding: '0.75rem', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, marginBottom: '1rem', color: '#991b1b', fontSize: '0.875rem' }}>
           {error}
         </div>
       )}
+      {successMsg && (
+        <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6, marginBottom: '1rem', color: '#166534', fontSize: '0.875rem' }}>
+          {successMsg}
+        </div>
+      )}
 
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <button
-          onClick={() => setTab('jobs')}
-          style={{ ...tabStyle, borderBottom: tab === 'jobs' ? '2px solid #2563eb' : '2px solid transparent' }}
-        >
-          Jobs ({total})
-        </button>
-        <button
-          onClick={() => setTab('logs')}
-          style={{ ...tabStyle, borderBottom: tab === 'logs' ? '2px solid #2563eb' : '2px solid transparent' }}
-        >
-          Fetch Logs ({logs.length})
-        </button>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #e5e7eb' }}>
+        {([['jobs', `Jobs (${total})`], ['fetch-logs', `Fetch Logs (${fetchLogs.length})`], ['match-logs', `Match Logs (${matchLogs.length})`]] as [string, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key as typeof tab)}
+            style={{
+              ...tabStyle,
+              borderBottom: tab === key ? '2px solid #2563eb' : '2px solid transparent',
+              color: tab === key ? '#2563eb' : '#374151',
+              marginBottom: -1,
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
+      {/* Jobs tab */}
       {tab === 'jobs' && (
         <div style={{ overflowX: 'auto' }}>
           {jobs.length === 0 ? (
             <p style={{ color: '#6b7280', padding: '2rem', textAlign: 'center' }}>
-              No jobs yet. Click &quot;Trigger Fetch&quot; to pull jobs from Adzuna.
+              No jobs yet. Click &quot;Fetch Jobs&quot; to pull from Adzuna.
             </p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
@@ -190,11 +251,9 @@ export default function AdminPage() {
                     <td style={tdStyle}>{job.contract_type || '—'}</td>
                     <td style={tdStyle}>{formatDate(job.posted_at)}</td>
                     <td style={tdStyle}>
-                      {job.redirect_url ? (
-                        <a href={job.redirect_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>
-                          View
-                        </a>
-                      ) : '—'}
+                      {job.redirect_url
+                        ? <a href={job.redirect_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>View</a>
+                        : '—'}
                     </td>
                   </tr>
                 ))}
@@ -204,12 +263,11 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === 'logs' && (
+      {/* Fetch logs tab */}
+      {tab === 'fetch-logs' && (
         <div style={{ overflowX: 'auto' }}>
-          {logs.length === 0 ? (
-            <p style={{ color: '#6b7280', padding: '2rem', textAlign: 'center' }}>
-              No fetch logs yet.
-            </p>
+          {fetchLogs.length === 0 ? (
+            <p style={{ color: '#6b7280', padding: '2rem', textAlign: 'center' }}>No fetch logs yet.</p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
@@ -226,7 +284,7 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
+                {fetchLogs.map((log) => (
                   <tr key={log.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={tdStyle}>{log.id}</td>
                     <td style={tdStyle}>{formatDate(log.started_at)}</td>
@@ -235,18 +293,49 @@ export default function AdminPage() {
                     <td style={tdStyle}>{log.jobs_fetched}</td>
                     <td style={tdStyle}>{log.jobs_new}</td>
                     <td style={tdStyle}>{log.jobs_duplicate}</td>
-                    <td style={tdStyle}>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        background: log.status === 'completed' ? '#dcfce7' : log.status === 'failed' ? '#fef2f2' : '#fef9c3',
-                        color: log.status === 'completed' ? '#166534' : log.status === 'failed' ? '#991b1b' : '#854d0e',
-                      }}>
-                        {log.status}
-                      </span>
+                    <td style={tdStyle}>{statusBadge(log.status)}</td>
+                    <td style={{ ...tdStyle, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {log.error_message || '—'}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Match logs tab */}
+      {tab === 'match-logs' && (
+        <div style={{ overflowX: 'auto' }}>
+          {matchLogs.length === 0 ? (
+            <p style={{ color: '#6b7280', padding: '2rem', textAlign: 'center' }}>
+              No match logs yet. Click &quot;Run Matching&quot; to start.
+            </p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
+                  <th style={thStyle}>ID</th>
+                  <th style={thStyle}>Started</th>
+                  <th style={thStyle}>Finished</th>
+                  <th style={thStyle}>Users</th>
+                  <th style={thStyle}>Matches</th>
+                  <th style={thStyle}>Emails</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchLogs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={tdStyle}>{log.id}</td>
+                    <td style={tdStyle}>{formatDate(log.started_at)}</td>
+                    <td style={tdStyle}>{formatDate(log.finished_at)}</td>
+                    <td style={tdStyle}>{log.users_processed}</td>
+                    <td style={tdStyle}>{log.matches_created}</td>
+                    <td style={tdStyle}>{log.emails_sent}</td>
+                    <td style={tdStyle}>{statusBadge(log.status)}</td>
                     <td style={{ ...tdStyle, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {log.error_message || '—'}
                     </td>
@@ -261,7 +350,7 @@ export default function AdminPage() {
   );
 }
 
-// ── Inline styles ──
+// ── Styles ──
 const btnStyle: React.CSSProperties = {
   padding: '0.5rem 1rem',
   border: '1px solid #d1d5db',
@@ -276,10 +365,10 @@ const tabStyle: React.CSSProperties = {
   padding: '0.5rem 0',
   background: 'none',
   border: 'none',
+  borderBottom: '2px solid transparent',
   cursor: 'pointer',
   fontSize: '0.875rem',
   fontWeight: 600,
-  color: '#374151',
 };
 
 const thStyle: React.CSSProperties = {

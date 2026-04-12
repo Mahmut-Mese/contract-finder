@@ -1,74 +1,116 @@
-# Phase 0 - Implementation Plan
+# Phase 0 — Implementation (COMPLETED)
 
-## 1. Hosting Setup (Hostinger)
-- Use 1 Node.js slot on existing Hostinger Cloud
-- Deploy Next.js 15 fullstack app (App Router + Route Handlers)
-- Auto-deploy from GitHub
+## Stack
 
-## 2. Database Schema (Supabase)
+- **Auth**: Auth.js v5 (`next-auth@5.0.0-beta.30`) with credentials provider, JWT strategy
+- **Database**: MySQL 9.4 (local), raw `mysql2` queries (no ORM)
+- **Frontend**: Next.js 16.2.3, App Router, `src/` directory, inline styles
+- **Password hashing**: bcryptjs (12 rounds)
+- **Session**: JWT (30-day expiry), stored in `authjs.session-token` cookie
 
-### Table: profiles
+## Database Tables (Phase 0)
+
+### `users`
 | Column | Type | Description |
 |--------|------|-------------|
-| id | uuid | FK to auth.users |
-| email | text | User email |
-| skills | text[] | Array of tech skills |
-| min_rate | integer | Minimum daily rate |
-| max_rate | integer | Maximum daily rate |
-| location | text | City/country preference |
-| remote_preference | text | remote/hybrid/onsite |
-| contract_length | text | preferred contract length |
-| search_fingerprint | text | hash for grouping |
-| contract_finder_enabled | boolean | toggle on/off |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| id | VARCHAR(36) PK | UUID, auto-generated |
+| email | VARCHAR(255) UNIQUE | User email (lowercased) |
+| password_hash | VARCHAR(255) | bcrypt hash |
+| created_at | DATETIME | |
+| updated_at | DATETIME | Auto-updates |
 
-### Table: jobs_cache (prepared, empty)
-### Table: notifications (prepared, empty)
+### `profiles`
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK AUTO_INCREMENT | |
+| user_id | VARCHAR(36) FK → users | One profile per user |
+| skills | TEXT | Comma-separated tech skills |
+| min_rate | INT | Minimum daily rate (GBP) |
+| max_rate | INT | Maximum daily rate (GBP) |
+| location | VARCHAR(255) | City/country preference |
+| remote_preference | VARCHAR(50) | remote, hybrid, onsite, any |
+| contract_length | VARCHAR(100) | Preferred contract length |
+| search_fingerprint | VARCHAR(64) | SHA256 hash of preferences |
+| contract_finder_enabled | BOOLEAN | Toggle on/off (default: true) |
+| created_at | DATETIME | |
+| updated_at | DATETIME | Auto-updates |
 
-## 3. Project Structure
+### `sessions` (created but unused — JWT strategy doesn't need it)
+
+## Project Structure
+
 ```
+src/
 ├── app/
 │   ├── api/
-│   │   ├── auth/[...nextauth]/route.ts
-│   │   └── profile/route.ts
-│   ├── (auth)/
-│   │   ├── login/page.tsx
-│   │   └── signup/page.tsx
-│   ├── dashboard/page.tsx
-│   ├── profile/page.tsx
-│   └── layout.tsx
+│   │   ├── auth/[...nextauth]/route.ts   # Auth.js route handler
+│   │   ├── auth/signup/route.ts          # POST signup endpoint
+│   │   ├── profile/route.ts             # GET/PUT profile CRUD
+│   │   ├── fetch-jobs/route.ts          # (Initial Phase)
+│   │   ├── fetch-logs/route.ts          # (Initial Phase)
+│   │   └── jobs/route.ts               # (Initial Phase)
+│   ├── login/page.tsx                   # Login form
+│   ├── signup/page.tsx                  # Signup form
+│   ├── dashboard/page.tsx               # Profile summary + toggle
+│   ├── profile/page.tsx                 # Edit profile form
+│   ├── page.tsx                         # Admin UI (Initial Phase)
+│   └── layout.tsx                       # SessionProvider + Navbar
 ├── components/
-│   ├── AuthForm.tsx
-│   ├── ProfileForm.tsx
-│   ├── Dashboard.tsx
-│   └── Navbar.tsx
+│   ├── Navbar.tsx                       # Nav with auth state
+│   └── SessionProvider.tsx              # next-auth/react wrapper
 ├── lib/
-│   ├── supabase/client.ts
-│   └── supabase/server.ts
-├── types/
-│   └── index.ts
-└── .env.local
+│   ├── auth.ts                          # Auth.js config (JWT + credentials)
+│   ├── auth-db.ts                       # User + profile DB queries
+│   ├── fingerprint.ts                   # SHA256 search fingerprint
+│   ├── db.ts                            # MySQL pool (Initial Phase)
+│   ├── schema.sql                       # Initial Phase schema
+│   └── schema-phase0.sql               # Phase 0 schema
+├── middleware.ts                        # Route protection (cookie check)
+└── types/
+    └── job.ts                           # (Initial Phase)
 ```
 
-## 4. Core Features
-1. **Authentication**: Supabase Auth (email)
-2. **Profile Form**: skills, rate, location, remote, contract length
-3. **Fingerprint**: SHA256 hash of preferences
-4. **Dashboard**: profile summary, toggle status
+## Core Features
 
-## 5. Environment Variables
+1. **Authentication**: Auth.js v5, credentials provider, JWT sessions
+2. **Signup**: `POST /api/auth/signup` — email/password validation, bcrypt, auto-creates profile
+3. **Login/Logout**: `signIn`/`signOut` from next-auth/react, redirects to dashboard
+4. **Profile CRUD**: `GET/PUT /api/profile` — skills, rate, location, remote, contract length
+5. **Search Fingerprint**: SHA256 of normalized preferences, auto-regenerated on save
+6. **Contract Finder Toggle**: On/off switch on dashboard, persisted to DB
+7. **Route Protection**: Middleware checks for session cookie, redirects to `/login`
+
+## Environment Variables
+
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+AUTH_SECRET=          # openssl rand -base64 32
+NEXTAUTH_URL=http://localhost:4000
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=contract_finder
+MYSQL_USER=root
+MYSQL_PASSWORD=
 ADZUNA_APP_ID=
 ADZUNA_APP_KEY=
+FETCH_SECRET=dev-secret
 ```
 
-## 6. Success Criteria
-- [ ] User can signup/login
-- [ ] Profile CRUD works
-- [ ] Fingerprint auto-generates
-- [ ] Toggle saves to DB
-- [ ] Protected routes
+## Success Criteria
+
+- [x] User can signup with email + password
+- [x] User can login/logout
+- [x] Profile CRUD works (all fields)
+- [x] Search fingerprint auto-generates on profile save
+- [x] Contract Finder toggle saves to DB
+- [x] Protected routes redirect to /login
+- [x] API routes return 401 for unauthenticated requests
+- [x] Build succeeds with zero TypeScript errors
+- [x] Existing admin APIs still work
+
+## Known Limitations
+
+- Middleware deprecation warning in Next.js 16 (renamed to "proxy", still functional)
+- `sessions` table created but unused (JWT strategy doesn't use DB sessions)
+- No password reset or email verification (deferred)
+- No social login (deferred)
+- Turbopack root warning due to extra `package-lock.json` in home dir

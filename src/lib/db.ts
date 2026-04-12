@@ -26,7 +26,7 @@ export async function query<T extends RowDataPacket[]>(
   sql: string,
   params?: (string | number | boolean | null | Date | Buffer)[]
 ): Promise<T> {
-  const [rows] = await getPool().execute<T>(sql, params);
+  const [rows] = await getPool().query<T>(sql, params);
   return rows;
 }
 
@@ -35,7 +35,7 @@ export async function execute(
   sql: string,
   params?: (string | number | boolean | null | Date | Buffer)[]
 ): Promise<ResultSetHeader> {
-  const [result] = await getPool().execute<ResultSetHeader>(sql, params);
+  const [result] = await getPool().query<ResultSetHeader>(sql, params);
   return result;
 }
 

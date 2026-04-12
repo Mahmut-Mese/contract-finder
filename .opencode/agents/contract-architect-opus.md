@@ -1,6 +1,6 @@
 ---
 description: Primary architect and orchestrator for Contract Finder. Use for architecture, implementation slicing, delegation, and cross-cutting technical decisions.
-mode: primary
+mode: all
 model: github-copilot/claude-opus-4.6
 temperature: 0.1
 permission:

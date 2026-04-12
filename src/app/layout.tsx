@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import SessionProvider from "@/components/SessionProvider";
+import Navbar from "@/components/Navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Contract Finder - Admin",
-  description: "Internal admin for Contract Finder data validation spike",
+  title: "Contract Finder",
+  description: "Find IT contract opportunities matched to your skills",
 };
 
 export default function RootLayout({
@@ -23,8 +25,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <SessionProvider>
+          <Navbar />
+          {children}
+        </SessionProvider>
+      </body>
     </html>
   );
 }
