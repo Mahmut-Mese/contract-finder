@@ -5,8 +5,8 @@
 **Target Users**: IT Developers (software engineers, full-stack, backend, frontend, DevOps, AI/ML, etc.) looking for freelance contracts, remote gigs, and short-term projects.  
 **Core 3 Services** (built in phases):  
 1. Smart Contract Discovery + Hourly Notifications  
-2. AI CV / Profile Auto-Update (tailored per contract)  
-3. Auto-Apply (Review First mode → Without Review mode)  
+2. One-Click Apply (Standard CV)
+3. AI CV Tailoring & Auto-Apply  
 
 **Current Focus**: Notifications-only as Phase 1.  
 
@@ -86,15 +86,16 @@
 - Admin/user role separation: `is_admin` flag, admin-only dashboard at `/admin`, protected admin API routes  
 **Reason**: This becomes the first real user-facing MVP once the job discovery engine and user foundation are both proven.
 
-**Phase 2: AI CV Tailoring (3–4 weeks, ~$10–30/month)**  
-- Store user's base CV  
-- Generate tailored CV + short cover note for strong matches  
-**Reason**: This becomes the memorable "wow" feature ("Your CV rewrites itself for every contract").
+**Phase 2: Base CV Storage & One-Click Apply (2-3 weeks)**
+- Store user's base CV (PDF/DOCX upload to local/cloud storage)
+- Add "Apply Now" button to matches that sends standard base CV via email/integration
+- Track application status (Sent, Delivered, Viewed)
+**Reason**: Establishes the core application delivery pipeline and user trust before introducing AI costs and complexity.
 
-**Phase 3: Review-First Auto-Apply (2–4 weeks, ~$20–50/month)**  
-- One-click "Apply Now" using tailored CV + cover note  
-- Track application status  
-**Reason**: Adds real automation while keeping the user in full control (safer and builds trust).
+**Phase 3: AI CV Tailoring (3–4 weeks, ~$10–30/month)**  
+- Generate tailored CV + short cover note for specific matches  
+- Introduce user credit/token system for AI cost control (e.g. 5 free tokens per user)
+**Reason**: Becomes the memorable "wow" feature, easily monetizable once the basic apply pipeline is proven.
 
 **Phase 4: Full Automation + Monetization (4–6 weeks, ~$50–100/month)**  
 - Add "Apply Without Review" mode with safety limits  
