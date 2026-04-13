@@ -766,6 +766,23 @@ function MatchCard({
   onToggleExpand: () => void;
   onStatusChange: (matchId: number, status: string) => void;
 }) {
+  const [fullDescription, setFullDescription] = useState<string | null>(null);
+  const [descLoading, setDescLoading] = useState(false);
+  const hasFetched = useRef(false);
+
+  useEffect(() => {
+    if (!isExpanded || hasFetched.current) return;
+    hasFetched.current = true;
+    setDescLoading(true);
+    fetch(`/api/jobs/${match.job_id}/description`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.description) setFullDescription(data.description);
+      })
+      .catch(() => {})
+      .finally(() => setDescLoading(false));
+  }, [isExpanded, match.job_id]);
+
   const scoreColor =
     match.score >= 50 ? '#16a34a' : match.score >= 25 ? '#d97706' : '#9ca3af';
 
@@ -913,16 +930,20 @@ function MatchCard({
           borderTop: '1px solid #e5e7eb',
           fontSize: '0.85rem',
           color: '#374151',
-          lineHeight: 1.5
+          lineHeight: 1.6
         }}>
           {match.posted_at && (
-            <div style={{ marginBottom: '0.5rem' }}>
+            <div style={{ marginBottom: '0.75rem' }}>
               <strong>Posted:</strong> {new Date(match.posted_at).toLocaleString()}
             </div>
           )}
-          <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.5rem' }}>
-            {match.description || 'No description available.'}
-          </div>
+          {descLoading ? (
+            <p style={{ color: '#9ca3af', margin: 0 }}>Loading full description…</p>
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {fullDescription || match.description || 'No description available.'}
+            </div>
+          )}
         </div>
       )}
     </div>
