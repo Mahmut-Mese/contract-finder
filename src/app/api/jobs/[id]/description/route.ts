@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, execute } from '@/lib/db';
 import type { RowDataPacket } from 'mysql2/promise';
 
 /**
@@ -68,22 +68,36 @@ export async function GET(
 
     const html = await res.text();
 
-    // Extract JSON-LD blocks
+    // Strategy 1: extract from JSON-LD structured data (JobPosting schema)
+    let fullDescription: string | null = null;
+
     const jsonLdMatches = html.matchAll(
       /<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/gi
     );
 
-    let fullDescription: string | null = null;
-
     for (const match of jsonLdMatches) {
       try {
-        const data = JSON.parse(match[1]);
-        if (data.description && typeof data.description === 'string' && data.description.length > 100) {
-          fullDescription = data.description;
-          break;
+        const parsed = JSON.parse(match[1]);
+        // JSON-LD can be a single object or an array of objects
+        const items: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          const d = item as Record<string, unknown>;
+          if (typeof d.description === 'string' && d.description.length > 100) {
+            fullDescription = d.description;
+            break;
+          }
         }
+        if (fullDescription) break;
       } catch {
         // malformed JSON-LD — skip
+      }
+    }
+
+    // Strategy 2: fall back to scraping the .adp-body div
+    if (!fullDescription) {
+      const bodyMatch = html.match(/class="[^"]*adp-body[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+      if (bodyMatch && bodyMatch[1].length > 100) {
+        fullDescription = bodyMatch[1];
       }
     }
 
@@ -109,7 +123,7 @@ export async function GET(
       .trim();
 
     // Cache back to DB so subsequent expands are instant
-    await query(
+    await execute(
       'UPDATE jobs SET description = ? WHERE id = ?',
       [plainText, jobId]
     );

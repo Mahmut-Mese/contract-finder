@@ -77,6 +77,8 @@ export default function DashboardPage() {
   const [matchFilter, setMatchFilter] = useState<string>('mylist'); // 'mylist' = default tab
   const [page, setPage] = useState(0); // 0-indexed page number
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  // Cache full descriptions by job_id — persists across loadMatches re-renders
+  const [fullDescriptions, setFullDescriptions] = useState<Map<number, string>>(new Map());
   
   // Existing filter state
   const [excludeCompanies, setExcludeCompanies] = useState<string[]>([]);
@@ -700,6 +702,10 @@ export default function DashboardPage() {
                           isExpanded={expandedIds.has(match.match_id)}
                           onToggleExpand={() => toggleExpand(match.match_id)}
                           onStatusChange={updateMatchStatus}
+                          fullDescription={fullDescriptions.get(match.job_id) ?? null}
+                          onFullDescriptionLoaded={(jobId, desc) =>
+                            setFullDescriptions(prev => new Map(prev).set(jobId, desc))
+                          }
                         />
                       ))}
                     </div>
@@ -760,28 +766,30 @@ function MatchCard({
   isExpanded,
   onToggleExpand,
   onStatusChange,
+  fullDescription,
+  onFullDescriptionLoaded,
 }: {
   match: MatchedJob;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onStatusChange: (matchId: number, status: string) => void;
+  fullDescription: string | null;
+  onFullDescriptionLoaded: (jobId: number, desc: string) => void;
 }) {
-  const [fullDescription, setFullDescription] = useState<string | null>(null);
   const [descLoading, setDescLoading] = useState(false);
-  const hasFetched = useRef(false);
 
   useEffect(() => {
-    if (!isExpanded || hasFetched.current) return;
-    hasFetched.current = true;
+    // Only fetch if expanded and we don't already have the full description
+    if (!isExpanded || fullDescription !== null) return;
     setDescLoading(true);
     fetch(`/api/jobs/${match.job_id}/description`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.description) setFullDescription(data.description);
+        if (data?.description) onFullDescriptionLoaded(match.job_id, data.description);
       })
       .catch(() => {})
       .finally(() => setDescLoading(false));
-  }, [isExpanded, match.job_id]);
+  }, [isExpanded, fullDescription, match.job_id, onFullDescriptionLoaded]);
 
   const scoreColor =
     match.score >= 50 ? '#16a34a' : match.score >= 25 ? '#d97706' : '#9ca3af';
