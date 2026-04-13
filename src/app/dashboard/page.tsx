@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 
 interface Profile {
@@ -11,7 +11,6 @@ interface Profile {
   remote_preference: string | null;
   contract_length: string | null;
   search_fingerprint: string | null;
-  contract_finder_enabled: boolean;
 }
 
 interface MatchedJob {
@@ -43,6 +42,14 @@ interface SavedSearch {
     excludeTitleKeywords?: string[];
     minScore?: number;
     remoteOnly?: boolean;
+    datePosted?: string;
+    postedBy?: string;
+    rateMin?: string;
+    rateMax?: string;
+    skillsFilter?: string;
+    locationFilter?: string;
+    remotePref?: string;
+    contractLengthFilter?: string;
   };
 }
 
@@ -66,19 +73,61 @@ export default function DashboardPage() {
   const [matchTotal, setMatchTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [matchesLoading, setMatchesLoading] = useState(true);
-  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [matchFilter, setMatchFilter] = useState<string>(''); // '' = all except dismissed
+  const [matchFilter, setMatchFilter] = useState<string>('mylist'); // 'mylist' = default tab
   const [page, setPage] = useState(0); // 0-indexed page number
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   
+  // Existing filter state
   const [excludeCompanies, setExcludeCompanies] = useState<string[]>([]);
   const [excludeTitleKeywords, setExcludeTitleKeywords] = useState<string[]>([]);
   const [minScore, setMinScore] = useState<number>(0);
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [companyInput, setCompanyInput] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // New filter state (display values)
+  const [datePosted, setDatePosted] = useState("");
+  const [postedBy, setPostedBy] = useState("");
+  const [rateMin, setRateMin] = useState("");
+  const [rateMax, setRateMax] = useState("");
+  const [skillsFilter, setSkillsFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [remotePref, setRemotePref] = useState("");
+  const [contractLengthFilter, setContractLengthFilter] = useState("");
+
+  // Debounced versions of text filters (used in API calls)
+  const [debouncedPostedBy, setDebouncedPostedBy] = useState("");
+  const [debouncedSkills, setDebouncedSkills] = useState("");
+  const [debouncedLocation, setDebouncedLocation] = useState("");
+  const [debouncedContractLength, setDebouncedContractLength] = useState("");
+  const [debouncedRateMin, setDebouncedRateMin] = useState("");
+  const [debouncedRateMax, setDebouncedRateMax] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Debounce text filter changes
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedPostedBy(postedBy);
+      setDebouncedSkills(skillsFilter);
+      setDebouncedLocation(locationFilter);
+      setDebouncedContractLength(contractLengthFilter);
+      setDebouncedRateMin(rateMin);
+      setDebouncedRateMax(rateMax);
+    }, 500);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [postedBy, skillsFilter, locationFilter, contractLengthFilter, rateMin, rateMax]);
+  
+  // Reset page when debounced values change (new filter results should start at page 1)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setPage(0);
+  }, [debouncedPostedBy, debouncedSkills, debouncedLocation, debouncedContractLength, debouncedRateMin, debouncedRateMax]);
   
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [activeSearchId, setActiveSearchId] = useState<number | null>(null);
@@ -92,7 +141,6 @@ export default function DashboardPage() {
       const res = await fetch('/api/profile');
       if (!res.ok) throw new Error('Failed to load profile');
       const data = await res.json();
-      data.profile.contract_finder_enabled = Boolean(data.profile.contract_finder_enabled);
       setProfile(data.profile);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profile');
@@ -115,16 +163,31 @@ export default function DashboardPage() {
   const applySavedSearch = (search: SavedSearch) => {
     setActiveSearchId(search.id);
     setSearchName(search.name);
-    setExcludeCompanies(search.filters.excludeCompanies || []);
-    setExcludeTitleKeywords(search.filters.excludeTitleKeywords || []);
-    setMinScore(search.filters.minScore || 0);
-    setRemoteOnly(search.filters.remoteOnly || false);
+    
+    const f = search.filters;
+    setExcludeCompanies(f.excludeCompanies || []);
+    setExcludeTitleKeywords(f.excludeTitleKeywords || []);
+    setMinScore(f.minScore || 0);
+    setRemoteOnly(f.remoteOnly || false);
+    
+    setDatePosted(f.datePosted || "");
+    setPostedBy(f.postedBy || "");
+    setRateMin(f.rateMin || "");
+    setRateMax(f.rateMax || "");
+    setSkillsFilter(f.skillsFilter || "");
+    setLocationFilter(f.locationFilter || "");
+    setRemotePref(f.remotePref || "");
+    setContractLengthFilter(f.contractLengthFilter || "");
+    
     setPage(0);
   };
 
   const saveCurrentFilters = async () => {
     const name = searchName.trim() || 'My Search';
-    const filters = { excludeCompanies, excludeTitleKeywords, minScore, remoteOnly };
+    const filters = { 
+      excludeCompanies, excludeTitleKeywords, minScore, remoteOnly,
+      datePosted, postedBy, rateMin, rateMax, skillsFilter, locationFilter, remotePref, contractLengthFilter
+    };
     setSavingSearch(true);
     try {
       if (activeSearchId) {
@@ -182,6 +245,15 @@ export default function DashboardPage() {
       if (minScore > 0) params.set('min_score', String(minScore));
       if (remoteOnly) params.set('remote_only', 'true');
       
+      if (datePosted) params.set('date_posted', datePosted);
+      if (debouncedPostedBy) params.set('posted_by', debouncedPostedBy);
+      if (debouncedRateMin) params.set('rate_min', debouncedRateMin);
+      if (debouncedRateMax) params.set('rate_max', debouncedRateMax);
+      if (debouncedSkills) params.set('skills', debouncedSkills);
+      if (debouncedLocation) params.set('location_filter', debouncedLocation);
+      if (remotePref) params.set('remote_preference', remotePref);
+      if (debouncedContractLength) params.set('contract_length', debouncedContractLength);
+      
       const res = await fetch(`/api/matches?${params}`);
       if (!res.ok) throw new Error('Failed to load matches');
       const data = await res.json();
@@ -192,7 +264,7 @@ export default function DashboardPage() {
     } finally {
       setMatchesLoading(false);
     }
-  }, [matchFilter, page, excludeCompanies, excludeTitleKeywords, minScore, remoteOnly]);
+  }, [matchFilter, page, excludeCompanies, excludeTitleKeywords, minScore, remoteOnly, datePosted, debouncedPostedBy, debouncedRateMin, debouncedRateMax, debouncedSkills, debouncedLocation, remotePref, debouncedContractLength]);
 
   useEffect(() => {
     loadProfile();
@@ -203,24 +275,10 @@ export default function DashboardPage() {
     loadMatches();
   }, [loadMatches]);
 
-  const toggleFinder = async () => {
-    if (!profile) return;
-    setToggling(true);
-    try {
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contract_finder_enabled: !profile.contract_finder_enabled }),
-      });
-      if (!res.ok) throw new Error('Failed to update');
-      const data = await res.json();
-      data.profile.contract_finder_enabled = Boolean(data.profile.contract_finder_enabled);
-      setProfile(data.profile);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle');
-    } finally {
-      setToggling(false);
-    }
+  const shouldShowInTab = (newStatus: string): boolean => {
+    if (matchFilter === 'mylist') return newStatus === 'new' || newStatus === 'viewed';
+    if (matchFilter === '') return newStatus !== 'dismissed' && newStatus !== 'deleted';
+    return newStatus === matchFilter;
   };
 
   const updateMatchStatus = async (matchId: number, status: string) => {
@@ -232,7 +290,8 @@ export default function DashboardPage() {
       });
       if (!res.ok) throw new Error('Failed to update');
       
-      if (status === 'dismissed' || status === 'deleted') {
+      if (!shouldShowInTab(status)) {
+        // Remove from view — new status doesn't belong in current tab
         setMatches((prev) => prev.filter((m) => m.match_id !== matchId));
         setMatchTotal((prev) => prev - 1);
       } else {
@@ -254,7 +313,7 @@ export default function DashboardPage() {
     });
   };
 
-  const filterTabs = ['', 'new', 'saved', 'applied', 'deleted'];
+  const filterTabs = ['mylist', '', 'saved', 'applied', 'deleted'];
 
   const groupedMatches: { key: string, label: string, matches: MatchedJob[] }[] = [];
   const groupMap = new Map<string, MatchedJob[]>();
@@ -277,64 +336,42 @@ export default function DashboardPage() {
     });
   });
 
+  // Calculate active filter count
+  let activeFilterCount = 0;
+  if (excludeCompanies.length > 0) activeFilterCount++;
+  if (excludeTitleKeywords.length > 0) activeFilterCount++;
+  if (minScore > 0) activeFilterCount++;
+  if (remoteOnly) activeFilterCount++;
+  if (datePosted) activeFilterCount++;
+  if (postedBy) activeFilterCount++;
+  if (rateMin || rateMax) activeFilterCount++;
+  if (skillsFilter) activeFilterCount++;
+  if (locationFilter) activeFilterCount++;
+  if (remotePref) activeFilterCount++;
+  if (contractLengthFilter) activeFilterCount++;
+
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'var(--font-geist-sans)' }}>Loading...</div>;
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem', fontFamily: 'var(--font-geist-sans)' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem' }}>
-        Dashboard
-      </h1>
-
-      {error && (
-        <div style={errorStyle}>{error}</div>
-      )}
-
-      {/* Contract Finder Toggle */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Contract Finder
+    <div style={{ display: 'flex', gap: '1.5rem', padding: '2rem', fontFamily: 'var(--font-geist-sans)', maxWidth: 1200, margin: '0 auto' }}>
+      
+      {/* Left Sidebar - Filters */}
+      <div style={{ width: 280, flexShrink: 0 }}>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
+              Filters
+              {activeFilterCount > 0 && (
+                <span style={{ color: '#2563eb', fontSize: '0.75rem', fontWeight: 600, marginLeft: '0.5rem', background: '#eff6ff', padding: '0.125rem 0.5rem', borderRadius: 10 }}>
+                  {activeFilterCount}
+                </span>
+              )}
             </h2>
-            <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>
-              {profile?.contract_finder_enabled
-                ? 'Actively matching you with contracts'
-                : 'Paused — enable to receive matches'}
-            </p>
           </div>
-          <button
-            onClick={toggleFinder}
-            disabled={toggling}
-            style={{
-              ...toggleBtnStyle,
-              background: profile?.contract_finder_enabled ? '#16a34a' : '#d1d5db',
-            }}
-          >
-            <span
-              style={{
-                ...toggleKnobStyle,
-                transform: profile?.contract_finder_enabled ? 'translateX(24px)' : 'translateX(0)',
-              }}
-            />
-          </button>
-        </div>
-      </div>
 
-      {/* Filters Sidebar/Panel */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-             onClick={() => setFiltersOpen(!filtersOpen)}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
-            Filters {(excludeCompanies.length + excludeTitleKeywords.length > 0 || minScore > 0 || remoteOnly) && 
-              <span style={{ color: '#2563eb', fontSize: '0.75rem', fontWeight: 400, marginLeft: '0.5rem' }}>Active</span>}
-          </h2>
-          <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{filtersOpen ? '▼' : '▶'}</span>
-        </div>
-
-        {filtersOpen && (
-          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             
             {/* Saved Searches */}
             <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem' }}>
@@ -352,6 +389,8 @@ export default function DashboardPage() {
                           color: activeSearchId === s.id ? '#2563eb' : '#374151',
                           fontWeight: activeSearchId === s.id ? 700 : 500,
                           fontSize: '0.8rem',
+                          textAlign: 'left',
+                          flex: 1
                         }}
                       >
                         {s.name}
@@ -368,6 +407,101 @@ export default function DashboardPage() {
               )}
             </div>
 
+            {/* Date Posted */}
+            <div>
+              <label style={filterLabelStyle}>Date Posted</label>
+              <select
+                value={datePosted}
+                onChange={(e) => { setDatePosted(e.target.value); setPage(0); }}
+                style={filterInputStyle}
+              >
+                <option value="">Any time</option>
+                <option value="1">Last 24 hours</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+            </div>
+
+            {/* Posted By */}
+            <div>
+              <label style={filterLabelStyle}>Posted By (Company)</label>
+              <input
+                value={postedBy}
+                onChange={(e) => setPostedBy(e.target.value)}
+                placeholder="e.g. Acme Corp"
+                style={filterInputStyle}
+              />
+            </div>
+
+            {/* Contract Rate */}
+            <div>
+              <label style={filterLabelStyle}>Contract Rate (£/day)</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="number"
+                  value={rateMin}
+                  onChange={(e) => setRateMin(e.target.value)}
+                  placeholder="Min"
+                  style={{ ...filterInputStyle, minWidth: 0 }}
+                />
+                <input
+                  type="number"
+                  value={rateMax}
+                  onChange={(e) => setRateMax(e.target.value)}
+                  placeholder="Max"
+                  style={{ ...filterInputStyle, minWidth: 0 }}
+                />
+              </div>
+            </div>
+
+            {/* Skills */}
+            <div>
+              <label style={filterLabelStyle}>Skills</label>
+              <input
+                value={skillsFilter}
+                onChange={(e) => setSkillsFilter(e.target.value)}
+                placeholder="e.g. React, Node"
+                style={filterInputStyle}
+              />
+            </div>
+
+            {/* Location */}
+            <div>
+              <label style={filterLabelStyle}>Location</label>
+              <input
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                placeholder="e.g. London"
+                style={filterInputStyle}
+              />
+            </div>
+
+            {/* Remote Preference */}
+            <div>
+              <label style={filterLabelStyle}>Remote Preference</label>
+              <select
+                value={remotePref}
+                onChange={(e) => { setRemotePref(e.target.value); setPage(0); }}
+                style={filterInputStyle}
+              >
+                <option value="">Any</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">On-site</option>
+              </select>
+            </div>
+
+            {/* Contract Length */}
+            <div>
+              <label style={filterLabelStyle}>Contract Length</label>
+              <input
+                value={contractLengthFilter}
+                onChange={(e) => setContractLengthFilter(e.target.value)}
+                placeholder="e.g. 6 months"
+                style={filterInputStyle}
+              />
+            </div>
+
             {/* Exclude Companies */}
             <div>
               <label style={filterLabelStyle}>Exclude Companies</label>
@@ -382,7 +516,7 @@ export default function DashboardPage() {
                       setPage(0);
                     }
                   }}
-                  placeholder="Type company name, press Enter"
+                  placeholder="Type & press Enter"
                   style={filterInputStyle}
                 />
               </div>
@@ -411,7 +545,7 @@ export default function DashboardPage() {
                       setPage(0);
                     }
                   }}
-                  placeholder="Type keyword, press Enter"
+                  placeholder="Type & press Enter"
                   style={filterInputStyle}
                 />
               </div>
@@ -435,54 +569,50 @@ export default function DashboardPage() {
                 max={100}
                 value={minScore}
                 onChange={(e) => { setMinScore(Number(e.target.value)); setPage(0); }}
-                style={{ width: '100%' }}
+                style={{ width: '100%', boxSizing: 'border-box' }}
               />
             </div>
 
-            {/* Remote Only */}
-            <div>
-              <label style={{ ...filterLabelStyle, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={remoteOnly}
-                  onChange={(e) => { setRemoteOnly(e.target.checked); setPage(0); }}
-                />
-                Remote only
-              </label>
-            </div>
-
             {/* Clear Filters */}
-            {(excludeCompanies.length > 0 || excludeTitleKeywords.length > 0 || minScore > 0 || remoteOnly) && (
+            {activeFilterCount > 0 && (
               <button
                 onClick={() => {
                   setExcludeCompanies([]);
                   setExcludeTitleKeywords([]);
                   setMinScore(0);
                   setRemoteOnly(false);
+                  setDatePosted("");
+                  setPostedBy("");
+                  setRateMin("");
+                  setRateMax("");
+                  setSkillsFilter("");
+                  setLocationFilter("");
+                  setRemotePref("");
+                  setContractLengthFilter("");
                   setCompanyInput('');
                   setKeywordInput('');
                   setPage(0);
                   setActiveSearchId(null);
                 }}
-                style={{ ...actionBtnStyle, color: '#ef4444', fontSize: '0.8rem' }}
+                style={{ ...actionBtnStyle, color: '#ef4444', fontSize: '0.8rem', textAlign: 'left', width: '100%' }}
               >
                 Clear All Filters
               </button>
             )}
 
             {/* Save current filters */}
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <input
                 value={searchName}
                 onChange={(e) => setSearchName(e.target.value)}
                 placeholder={activeSearchId ? 'Update name...' : 'Search name...'}
-                style={{ ...filterInputStyle, flex: 1 }}
+                style={{ ...filterInputStyle, width: '100%', boxSizing: 'border-box' }}
               />
               <button
                 onClick={saveCurrentFilters}
                 disabled={savingSearch}
                 style={{
-                  padding: '0.375rem 0.75rem',
+                  padding: '0.5rem 0.75rem',
                   background: '#2563eb',
                   color: 'white',
                   border: 'none',
@@ -491,120 +621,133 @@ export default function DashboardPage() {
                   fontWeight: 500,
                   cursor: savingSearch ? 'default' : 'pointer',
                   opacity: savingSearch ? 0.6 : 1,
-                  whiteSpace: 'nowrap',
+                  width: '100%',
+                  boxSizing: 'border-box'
                 }}
               >
                 {savingSearch ? 'Saving...' : activeSearchId ? 'Update Search' : 'Save Search'}
               </button>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* Matched Jobs */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
-            Matched Contracts {matchTotal > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({matchTotal})</span>}
-          </h2>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {filterTabs.map((f) => (
-              <button
-                key={f}
-                onClick={() => { setMatchFilter(f); setPage(0); }}
-                style={{
-                  ...filterBtnStyle,
-                  background: matchFilter === f ? '#2563eb' : 'white',
-                  color: matchFilter === f ? 'white' : '#374151',
-                }}
-              >
-                {f === '' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
           </div>
         </div>
-
-        {matchesLoading ? (
-          <p style={{ textAlign: 'center', color: '#9ca3af', padding: '1rem' }}>Loading matches...</p>
-        ) : matches.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-            <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
-              {(profile?.skills?.length ?? 0) > 0
-                ? 'No matches yet. Matches are generated automatically when new contracts are found.'
-                : 'Complete your profile to start receiving matches.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {groupedMatches.map((group) => (
-                <div key={group.key}>
-                  <h3 style={{
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    color: '#6b7280',
-                    padding: '0.75rem 0 0.25rem',
-                    borderBottom: '1px solid #e5e7eb',
-                    marginBottom: '0.5rem',
-                    marginTop: 0
-                  }}>
-                    {group.label}
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {group.matches.map((match) => (
-                      <MatchCard
-                        key={match.match_id}
-                        match={match}
-                        isExpanded={expandedIds.has(match.match_id)}
-                        onToggleExpand={() => toggleExpand(match.match_id)}
-                        onStatusChange={updateMatchStatus}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Pagination */}
-            {matchTotal > PAGE_SIZE && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6' }}>
-                <button
-                  onClick={() => setPage((p) => p - 1)}
-                  disabled={page === 0}
-                  style={{
-                    ...paginationBtnStyle,
-                    opacity: page === 0 ? 0.4 : 1,
-                    cursor: page === 0 ? 'default' : 'pointer',
-                  }}
-                >
-                  ← Previous
-                </button>
-                <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                  Page {page + 1} of {Math.ceil(matchTotal / PAGE_SIZE)}
-                </span>
-                <button
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={(page + 1) * PAGE_SIZE >= matchTotal}
-                  style={{
-                    ...paginationBtnStyle,
-                    opacity: (page + 1) * PAGE_SIZE >= matchTotal ? 0.4 : 1,
-                    cursor: (page + 1) * PAGE_SIZE >= matchTotal ? 'default' : 'pointer',
-                  }}
-                >
-                  Next →
-                </button>
-              </div>
-            )}
-          </>
-        )}
       </div>
 
-      {/* Account Info */}
-      <div style={cardStyle}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Account</h2>
-        <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>
-          Signed in as <strong>{session?.user?.email}</strong>
-        </p>
+      {/* Right Main Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem', marginTop: 0 }}>
+          Dashboard
+        </h1>
+
+        {error && (
+          <div style={errorStyle}>{error}</div>
+        )}
+
+        {/* Matched Jobs */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
+              Matched Contracts {matchTotal > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({matchTotal})</span>}
+            </h2>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {filterTabs.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => { setMatchFilter(f); setPage(0); }}
+                  style={{
+                    ...filterBtnStyle,
+                    background: matchFilter === f ? '#2563eb' : 'white',
+                    color: matchFilter === f ? 'white' : '#374151',
+                  }}
+                >
+                  {f === '' ? 'All' : f === 'mylist' ? 'My List' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {matchesLoading ? (
+            <p style={{ textAlign: 'center', color: '#9ca3af', padding: '1rem' }}>Loading matches...</p>
+          ) : matches.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+              <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
+                {(profile?.skills?.length ?? 0) > 0
+                  ? 'No matches yet. Adjust filters or wait for new contracts.'
+                  : 'Complete your profile to start receiving matches.'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {groupedMatches.map((group) => (
+                  <div key={group.key}>
+                    <h3 style={{
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: '#6b7280',
+                      padding: '0.75rem 0 0.25rem',
+                      borderBottom: '1px solid #e5e7eb',
+                      marginBottom: '0.5rem',
+                      marginTop: 0
+                    }}>
+                      {group.label}
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {group.matches.map((match) => (
+                        <MatchCard
+                          key={match.match_id}
+                          match={match}
+                          isExpanded={expandedIds.has(match.match_id)}
+                          onToggleExpand={() => toggleExpand(match.match_id)}
+                          onStatusChange={updateMatchStatus}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {matchTotal > PAGE_SIZE && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6' }}>
+                  <button
+                    onClick={() => setPage((p) => p - 1)}
+                    disabled={page === 0}
+                    style={{
+                      ...paginationBtnStyle,
+                      opacity: page === 0 ? 0.4 : 1,
+                      cursor: page === 0 ? 'default' : 'pointer',
+                    }}
+                  >
+                    ← Previous
+                  </button>
+                  <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                    Page {page + 1} of {Math.ceil(matchTotal / PAGE_SIZE)}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={(page + 1) * PAGE_SIZE >= matchTotal}
+                    style={{
+                      ...paginationBtnStyle,
+                      opacity: (page + 1) * PAGE_SIZE >= matchTotal ? 0.4 : 1,
+                      cursor: (page + 1) * PAGE_SIZE >= matchTotal ? 'default' : 'pointer',
+                    }}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Account Info */}
+        <div style={cardStyle}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem', marginTop: 0 }}>Account</h2>
+          <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>
+            Signed in as <strong>{session?.user?.email}</strong>
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -772,11 +915,6 @@ function MatchCard({
           color: '#374151',
           lineHeight: 1.5
         }}>
-          {match.contract_type && (
-            <div style={{ marginBottom: '0.5rem' }}>
-              <strong>Contract Type:</strong> {match.contract_type}
-            </div>
-          )}
           {match.posted_at && (
             <div style={{ marginBottom: '0.5rem' }}>
               <strong>Posted:</strong> {new Date(match.posted_at).toLocaleString()}
@@ -809,30 +947,6 @@ const errorStyle: React.CSSProperties = {
   color: '#991b1b',
   marginBottom: '1rem',
   fontSize: '0.875rem',
-};
-
-const toggleBtnStyle: React.CSSProperties = {
-  width: 52,
-  height: 28,
-  borderRadius: 14,
-  border: 'none',
-  cursor: 'pointer',
-  position: 'relative',
-  transition: 'background 0.2s',
-  flexShrink: 0,
-};
-
-const toggleKnobStyle: React.CSSProperties = {
-  display: 'block',
-  width: 22,
-  height: 22,
-  borderRadius: '50%',
-  background: 'white',
-  position: 'absolute',
-  top: 3,
-  left: 3,
-  transition: 'transform 0.2s',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
 };
 
 const filterBtnStyle: React.CSSProperties = {
@@ -874,6 +988,8 @@ const filterLabelStyle: React.CSSProperties = {
 
 const filterInputStyle: React.CSSProperties = {
   flex: 1,
+  width: '100%',
+  boxSizing: 'border-box',
   padding: '0.375rem 0.75rem',
   border: '1px solid #d1d5db',
   borderRadius: 6,

@@ -199,9 +199,171 @@ After all slices, add tests for:
 
 ---
 
-## Out of Scope
+## Out of Scope (Section 1)
 
 - AI-powered filter suggestions
 - Shared/public saved searches
 - Export matched jobs to CSV
+- Anything from Phase 3 (AI CV Tailoring)
+
+---
+---
+
+# Section 2 — Dashboard & Profile Refinements
+
+> **Goal**: Fix layout, filters, tabs, job card detail, and page responsibilities so the
+> dashboard is a clean job-browsing view and the profile page owns all user settings.
+
+## Summary of Changes
+
+1. **Filters move to a fixed left sidebar** (not a collapsible card inside the main content).
+2. **Expand filter types** — the current filters only have exclude-company, exclude-keyword, min-score, and remote-only. Add: date posted, posted by (company), contract rate range, skills, location, remote preference, and contract length.
+3. **Full description on expand** — when a job card is expanded, show the entire job description, not a truncated snippet. Also remove the "Contract Type: contract" line since every job is a contract.
+4. **Tab restructure** — remove the "New" tab. Add a "My List" tab as the first and default-selected tab. "My List" shows only jobs that have not been saved, removed, or applied (i.e. fresh matches the user hasn't acted on yet).
+5. **Move Contract Finder toggle to the profile page** — the dashboard should be purely for browsing jobs. The on/off toggle belongs with the rest of the user's settings.
+6. **Auto-save filtered searches to profile** — when a user saves a filtered search on the dashboard, it automatically appears on the profile page under a "Saved Filters" section. Users can view, rename, and delete saved filters from profile as well.
+7. **Remove Applications nav link** — the Applications page is not needed for now. Remove it from the navbar. (The page and API can stay; just hide the nav entry.)
+
+---
+
+## Slice 2.1 — Left Sidebar Filter Layout
+
+**Files**: `src/app/dashboard/page.tsx`
+
+### Layout change
+- Dashboard becomes a two-column layout: fixed-width left sidebar (280px) + flexible main content area.
+- The sidebar is always visible on desktop (no collapsible toggle needed).
+- On mobile/narrow screens, sidebar collapses above the main content or behind a toggle button.
+- Move all filter controls from the current collapsible card into the sidebar.
+
+### New filter types
+Add these filters to the sidebar (in addition to the existing exclude-company, exclude-keyword, min-score, remote-only):
+
+- **Date Posted** — dropdown or date picker: "Any time", "Last 24 hours", "Last 7 days", "Last 30 days"
+- **Posted By (Company)** — text input to filter jobs by a specific company name (positive match, unlike exclude-company which is negative)
+- **Contract Rate** — min/max range inputs (£/day), filters on `salary_min` / `salary_max`
+- **Skills** — comma-separated text input; filters jobs whose title or description mention any of the listed skills
+- **Location** — text input; filters jobs whose location field contains the entered text
+- **Remote Preference** — dropdown: "Any", "Remote", "Hybrid", "On-site"
+- **Contract Length** — text input; filters jobs whose description mentions the entered contract length
+
+### Filter behaviour
+- Filters apply immediately as the user changes them (no "Apply" button needed — debounce text inputs by 500ms).
+- "Clear All Filters" button resets every filter to its default.
+- Active filter count badge shown next to the sidebar heading.
+
+### API changes
+- `GET /api/matches` gains new query params: `date_posted`, `company`, `rate_min`, `rate_max`, `skills`, `location`, `remote_preference`, `contract_length`.
+- Backend builds SQL WHERE clauses for each.
+
+---
+
+## Slice 2.2 — Full Job Description on Expand
+
+**Files**: `src/app/dashboard/page.tsx`
+
+### Changes
+- When a card is expanded, render the **full** `description` field — not a truncated version.
+- Remove the "Contract Type: contract" line from the expanded view. All jobs in Contract Finder are contracts; this is redundant information.
+- Keep showing: posted date, salary/rate details, location, company, matched skills, and the full description.
+- Long descriptions should scroll within the expanded area if needed (max-height with overflow-y: auto, or simply let them flow naturally).
+
+---
+
+## Slice 2.3 — Tab Restructure (My List)
+
+**Files**: `src/app/dashboard/page.tsx`, `src/app/api/matches/route.ts`
+
+### Tab changes
+- **Remove** the "New" tab.
+- **Add** a "My List" tab as the **first** tab, selected by default.
+- Final tab order: `My List` | `All` | `Saved` | `Applied` | `Deleted`
+
+### "My List" behaviour
+- Shows matches that the user has **not** acted on — i.e. status is `new` or `viewed`.
+- Excludes jobs with status `saved`, `applied`, `deleted`, or `dismissed`.
+- This is the user's working queue of contracts to review.
+
+### API change
+- `GET /api/matches?status=mylist` — backend translates this to `WHERE status IN ('new', 'viewed')`.
+
+---
+
+## Slice 2.4 — Move Contract Finder Toggle to Profile
+
+**Files**: `src/app/dashboard/page.tsx`, `src/app/profile/page.tsx`
+
+### Dashboard
+- Remove the "Contract Finder" toggle card entirely from the dashboard.
+- Remove related state (`toggling`, `toggleFinder`) and the profile loading that was only needed for the toggle.
+
+### Profile page
+- Add a "Contract Finder" section at the top of the profile page (above the form).
+- Show the same toggle switch with the same on/off behaviour.
+- Label: "Contract Finder" with subtitle: "Actively matching you with contracts" (on) or "Paused — enable to receive matches" (off).
+- Profile page already loads profile data, so this is a simple addition.
+
+---
+
+## Slice 2.5 — Saved Filters on Profile Page
+
+**Files**: `src/app/profile/page.tsx`, `src/app/dashboard/page.tsx`
+
+### Profile page — Saved Filters section
+- Add a "Saved Filters" section on the profile page (below CV, above Account info or at the bottom).
+- Fetch saved searches from `GET /api/saved-searches` and list them.
+- Each saved filter shows: name, active/inactive status, and a summary of what's filtered.
+- Actions per saved filter: rename (inline edit), toggle active/inactive, delete.
+- When a user saves a filtered search on the dashboard, it automatically appears here on the next profile page load.
+
+### Dashboard — auto-save behaviour
+- No change to the save mechanism itself (already calls `POST /api/saved-searches`).
+- Just ensure the flow is clear: save on dashboard → appears on profile under "Saved Filters".
+
+---
+
+## Slice 2.6 — Remove Applications Nav Link
+
+**Files**: `src/components/Navbar.tsx`
+
+### Change
+- Remove the "Applications" link from the regular-user nav in `Navbar.tsx`.
+- Keep the `/applications` page and `/api/applications` route intact (no code deletion, just hidden from nav).
+- The Applications feature may return in a future phase.
+
+---
+
+## Implementation Order (Section 2)
+
+| Step | Slice | Depends on |
+|------|-------|-----------|
+| 1 | Slice 2.6: Remove Applications nav link | — |
+| 2 | Slice 2.4: Move Contract Finder toggle to profile | — |
+| 3 | Slice 2.2: Full description on expand | — |
+| 4 | Slice 2.3: Tab restructure (My List) | — |
+| 5 | Slice 2.1: Left sidebar filters + new filter types | Slice 2.3 (tabs must be settled first) |
+| 6 | Slice 2.5: Saved filters on profile | Slice 2.1 (filters must exist first) |
+
+Each slice gets E2E tested before moving to the next.
+
+---
+
+## E2E Test Updates (Section 2)
+
+- Dashboard loads with new tab structure (My List / All / Saved / Applied / Deleted)
+- "My List" is the default selected tab
+- Left sidebar filters render without errors
+- New filter types (date posted, rate range, skills, location, etc.) are present in sidebar
+- Expanded job card shows full description, no "Contract Type: contract" line
+- Contract Finder toggle is present on profile page, not on dashboard
+- Saved filters appear on profile page
+- Applications link is not in the navbar
+- No console errors on dashboard or profile pages
+
+---
+
+## Out of Scope (Section 2)
+
+- AI-powered filter suggestions
+- Map-based location filtering
 - Anything from Phase 3 (AI CV Tailoring)

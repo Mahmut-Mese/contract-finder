@@ -26,18 +26,30 @@ export async function GET(req: NextRequest) {
   const exclude_title_keywords = searchParams.get('exclude_title_keywords');
   const min_score = searchParams.get('min_score');
   const remote_only = searchParams.get('remote_only');
+  const date_posted = searchParams.get('date_posted');
+  const posted_by = searchParams.get('posted_by');
+  const rate_min = searchParams.get('rate_min');
+  const rate_max = searchParams.get('rate_max');
+  const skills = searchParams.get('skills');
+  const location_filter = searchParams.get('location_filter');
+  const remote_preference = searchParams.get('remote_preference');
+  const contract_length = searchParams.get('contract_length');
 
   try {
     let whereClause = 'WHERE mj.user_id = ?';
     const params: (string | number)[] = [session.user.id];
 
     if (status) {
-      const validGetStatuses = ['new', 'viewed', 'saved', 'dismissed', 'applied', 'deleted'];
+      const validGetStatuses = ['new', 'viewed', 'saved', 'dismissed', 'applied', 'deleted', 'mylist'];
       if (!validGetStatuses.includes(status)) {
         return NextResponse.json({ error: `status must be one of: ${validGetStatuses.join(', ')}` }, { status: 400 });
       }
-      whereClause += ' AND mj.status = ?';
-      params.push(status);
+      if (status === 'mylist') {
+        whereClause += " AND mj.status IN ('new', 'viewed')";
+      } else {
+        whereClause += ' AND mj.status = ?';
+        params.push(status);
+      }
     } else {
       // Default: exclude dismissed
       whereClause += " AND mj.status NOT IN ('dismissed', 'deleted')";
@@ -69,6 +81,72 @@ export async function GET(req: NextRequest) {
 
     if (remote_only === 'true') {
       whereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
+    }
+
+    // Date posted filter (days ago)
+    if (date_posted) {
+      const days = Number(date_posted);
+      if (!isNaN(days) && days > 0) {
+        whereClause += ' AND j.posted_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        params.push(days);
+      }
+    }
+
+    // Posted by (positive company match)
+    if (posted_by && posted_by.trim()) {
+      whereClause += ' AND LOWER(j.company) LIKE ?';
+      params.push(`%${posted_by.trim().toLowerCase()}%`);
+    }
+
+    // Contract rate range (salary_min/max are annual, convert day rate to annual: day * 220)
+    if (rate_min) {
+      const min = Number(rate_min);
+      if (!isNaN(min) && min > 0) {
+        whereClause += ' AND COALESCE(j.salary_max, j.salary_min, 0) >= ?';
+        params.push(min * 220);
+      }
+    }
+    if (rate_max) {
+      const max = Number(rate_max);
+      if (!isNaN(max) && max > 0) {
+        whereClause += ' AND COALESCE(j.salary_min, j.salary_max, 0) <= ?';
+        params.push(max * 220);
+      }
+    }
+
+    // Skills filter (comma-separated, match in title or description)
+    if (skills && skills.trim()) {
+      const skillList = skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skillList.length > 0) {
+        const skillConditions = skillList.map(() => "(LOWER(j.title) LIKE ? OR LOWER(j.description) LIKE ?)");
+        whereClause += ` AND (${skillConditions.join(' OR ')})`;
+        for (const skill of skillList) {
+          params.push(`%${skill.toLowerCase()}%`, `%${skill.toLowerCase()}%`);
+        }
+      }
+    }
+
+    // Location filter
+    if (location_filter && location_filter.trim()) {
+      whereClause += ' AND LOWER(j.location) LIKE ?';
+      params.push(`%${location_filter.trim().toLowerCase()}%`);
+    }
+
+    // Remote preference filter
+    if (remote_preference) {
+      if (remote_preference === 'remote') {
+        whereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
+      } else if (remote_preference === 'hybrid') {
+        whereClause += " AND (LOWER(j.title) LIKE '%hybrid%' OR LOWER(j.description) LIKE '%hybrid%')";
+      } else if (remote_preference === 'onsite') {
+        whereClause += " AND (LOWER(j.title) LIKE '%on-site%' OR LOWER(j.title) LIKE '%onsite%' OR LOWER(j.description) LIKE '%on-site%' OR LOWER(j.description) LIKE '%onsite%')";
+      }
+    }
+
+    // Contract length filter
+    if (contract_length && contract_length.trim()) {
+      whereClause += ' AND LOWER(j.description) LIKE ?';
+      params.push(`%${contract_length.trim().toLowerCase()}%`);
     }
 
     // Get total count

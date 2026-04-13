@@ -9,6 +9,7 @@ interface ProfileData {
   location: string | null;
   remote_preference: string | null;
   contract_length: string | null;
+  contract_finder_enabled: boolean;
 }
 
 interface CvInfo {
@@ -18,6 +19,15 @@ interface CvInfo {
   createdAt: string;
 }
 
+interface SavedFilter {
+  id: number;
+  name: string;
+  is_active: number | boolean;
+  filters: string | Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function ProfilePage() {
   const [skills, setSkills] = useState('');
   const [minRate, setMinRate] = useState('');
@@ -25,6 +35,8 @@ export default function ProfilePage() {
   const [location, setLocation] = useState('');
   const [remotePref, setRemotePref] = useState('any');
   const [contractLength, setContractLength] = useState('');
+  const [finderEnabled, setFinderEnabled] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +47,9 @@ export default function ProfilePage() {
   const [cvDeleting, setCvDeleting] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
   const [cvSuccess, setCvSuccess] = useState<string | null>(null);
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [editingFilterId, setEditingFilterId] = useState<number | null>(null);
+  const [editingFilterName, setEditingFilterName] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -49,6 +64,7 @@ export default function ProfilePage() {
         setLocation(p.location || '');
         setRemotePref(p.remote_preference || 'any');
         setContractLength(p.contract_length || '');
+        setFinderEnabled(Boolean(p.contract_finder_enabled));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load profile');
       } finally {
@@ -72,6 +88,110 @@ export default function ProfilePage() {
       }
     })();
   }, []);
+
+  // Load saved filters
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/saved-searches');
+        if (!res.ok) return;
+        const data = await res.json();
+        setSavedFilters(data.searches || []);
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, []);
+
+  const toggleFilterActive = async (filter: SavedFilter) => {
+    try {
+      const res = await fetch('/api/saved-searches', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: filter.id, is_active: !Boolean(filter.is_active) }),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      setSavedFilters(prev => prev.map(f => 
+        f.id === filter.id ? { ...f, is_active: !Boolean(f.is_active) } : f
+      ));
+    } catch (err) {
+      console.error('Failed to toggle filter:', err);
+    }
+  };
+
+  const renameFilter = async (id: number) => {
+    if (!editingFilterName.trim()) return;
+    try {
+      const res = await fetch('/api/saved-searches', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name: editingFilterName.trim() }),
+      });
+      if (!res.ok) throw new Error('Failed to rename');
+      setSavedFilters(prev => prev.map(f => 
+        f.id === id ? { ...f, name: editingFilterName.trim() } : f
+      ));
+      setEditingFilterId(null);
+      setEditingFilterName('');
+    } catch (err) {
+      console.error('Failed to rename filter:', err);
+    }
+  };
+
+  const deleteFilter = async (id: number) => {
+    if (!confirm('Delete this saved filter?')) return;
+    try {
+      const res = await fetch('/api/saved-searches', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      setSavedFilters(prev => prev.filter(f => f.id !== id));
+    } catch (err) {
+      console.error('Failed to delete filter:', err);
+    }
+  };
+
+  const formatFilterSummary = (filter: SavedFilter): string => {
+    let f: Record<string, unknown>;
+    try {
+      f = typeof filter.filters === 'string' ? JSON.parse(filter.filters) : filter.filters;
+    } catch {
+      return 'Invalid filter data';
+    }
+    const parts: string[] = [];
+    if (f.excludeCompanies?.length) parts.push(`Excludes: ${f.excludeCompanies.join(', ')}`);
+    if (f.excludeTitleKeywords?.length) parts.push(`No keywords: ${f.excludeTitleKeywords.join(', ')}`);
+    if (f.minScore > 0) parts.push(`Min score: ${f.minScore}`);
+    if (f.remoteOnly) parts.push('Remote only');
+    if (f.datePosted) parts.push(`Last ${f.datePosted} days`);
+    if (f.postedBy) parts.push(`Company: ${f.postedBy}`);
+    if (f.rateMin || f.rateMax) parts.push(`Rate: £${f.rateMin || '0'}-${f.rateMax || '∞'}/day`);
+    if (f.skillsFilter) parts.push(`Skills: ${f.skillsFilter}`);
+    if (f.locationFilter) parts.push(`Location: ${f.locationFilter}`);
+    if (f.remotePref) parts.push(`Remote: ${f.remotePref}`);
+    if (f.contractLengthFilter) parts.push(`Length: ${f.contractLengthFilter}`);
+    return parts.length > 0 ? parts.join(' · ') : 'No filters set';
+  };
+
+  const toggleFinder = async () => {
+    setToggling(true);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contract_finder_enabled: !finderEnabled }),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      const data = await res.json();
+      setFinderEnabled(Boolean(data.profile.contract_finder_enabled));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle');
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -182,6 +302,37 @@ export default function ProfilePage() {
         <a href="/dashboard" style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.875rem' }}>
           ← Dashboard
         </a>
+      </div>
+
+      {/* Contract Finder Toggle */}
+      <div style={toggleCardStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Contract Finder
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: finderEnabled ? '#16a34a' : '#6b7280', margin: 0 }}>
+              {finderEnabled
+                ? 'Actively matching you with contracts'
+                : 'Paused — enable to receive matches'}
+            </p>
+          </div>
+          <button
+            onClick={toggleFinder}
+            disabled={toggling}
+            style={{
+              ...toggleBtnStyle,
+              background: finderEnabled ? '#16a34a' : '#d1d5db',
+            }}
+          >
+            <span
+              style={{
+                ...toggleKnobStyle,
+                transform: finderEnabled ? 'translateX(24px)' : 'translateX(0)',
+              }}
+            />
+          </button>
+        </div>
       </div>
 
       {error && <div style={errorStyle}>{error}</div>}
@@ -388,6 +539,98 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Saved Filters Section */}
+      <div style={{ marginTop: '2rem', borderTop: '1px solid #e5e7eb', paddingTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Saved Filters</h2>
+
+        {savedFilters.length === 0 ? (
+          <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>
+            No saved filters yet. Save a filter from the Dashboard to see it here.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {savedFilters.map((filter) => (
+              <div
+                key={filter.id}
+                style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  padding: '1rem',
+                  background: Boolean(filter.is_active) ? 'white' : '#f9fafb',
+                  opacity: Boolean(filter.is_active) ? 1 : 0.7,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  {editingFilterId === filter.id ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
+                      <input
+                        value={editingFilterName}
+                        onChange={(e) => setEditingFilterName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') renameFilter(filter.id); if (e.key === 'Escape') { setEditingFilterId(null); setEditingFilterName(''); } }}
+                        style={{ ...inputStyle, padding: '0.375rem 0.5rem', fontSize: '0.8rem', flex: 1 }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => renameFilter(filter.id)}
+                        style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: 4, padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => { setEditingFilterId(null); setEditingFilterName(''); }}
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 4, padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#6b7280' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{filter.name}</span>
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 500,
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: 8,
+                        background: Boolean(filter.is_active) ? '#dcfce7' : '#f3f4f6',
+                        color: Boolean(filter.is_active) ? '#166534' : '#6b7280',
+                      }}>
+                        {Boolean(filter.is_active) ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {editingFilterId !== filter.id && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => { setEditingFilterId(filter.id); setEditingFilterName(filter.name); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#2563eb', fontWeight: 500 }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        onClick={() => toggleFilterActive(filter)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#d97706', fontWeight: 500 }}
+                      >
+                        {Boolean(filter.is_active) ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => deleteFilter(filter.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#ef4444', fontWeight: 500 }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.4 }}>
+                  {formatFilterSummary(filter)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -445,4 +688,36 @@ const successStyle: React.CSSProperties = {
   color: '#166534',
   marginBottom: '1rem',
   fontSize: '0.875rem',
+};
+
+const toggleCardStyle: React.CSSProperties = {
+  background: 'white',
+  border: '1px solid #e5e7eb',
+  borderRadius: 8,
+  padding: '1.5rem',
+  marginBottom: '1.5rem',
+};
+
+const toggleBtnStyle: React.CSSProperties = {
+  width: 52,
+  height: 28,
+  borderRadius: 14,
+  border: 'none',
+  cursor: 'pointer',
+  position: 'relative',
+  transition: 'background 0.2s',
+  flexShrink: 0,
+};
+
+const toggleKnobStyle: React.CSSProperties = {
+  display: 'block',
+  width: 22,
+  height: 22,
+  borderRadius: '50%',
+  background: 'white',
+  position: 'absolute',
+  top: 3,
+  left: 3,
+  transition: 'transform 0.2s',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
 };
