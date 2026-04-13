@@ -777,6 +777,9 @@ function MatchCard({
   onFullDescriptionLoaded: (jobId: number, desc: string) => void;
 }) {
   const [descLoading, setDescLoading] = useState(false);
+  // Stable ref so the callback doesn't cause the effect to re-fire on every render
+  const onLoadedRef = useRef(onFullDescriptionLoaded);
+  useEffect(() => { onLoadedRef.current = onFullDescriptionLoaded; });
 
   useEffect(() => {
     // Only fetch if expanded and we don't already have the full description
@@ -785,11 +788,11 @@ function MatchCard({
     fetch(`/api/jobs/${match.job_id}/description`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.description) onFullDescriptionLoaded(match.job_id, data.description);
+        if (data?.description) onLoadedRef.current(match.job_id, data.description);
       })
       .catch(() => {})
       .finally(() => setDescLoading(false));
-  }, [isExpanded, fullDescription, match.job_id, onFullDescriptionLoaded]);
+  }, [isExpanded, fullDescription, match.job_id]);
 
   const scoreColor =
     match.score >= 50 ? '#16a34a' : match.score >= 25 ? '#d97706' : '#9ca3af';

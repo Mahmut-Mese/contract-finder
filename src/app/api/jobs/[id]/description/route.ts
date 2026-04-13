@@ -7,10 +7,9 @@ import type { RowDataPacket } from 'mysql2/promise';
  * GET /api/jobs/[id]/description
  *
  * Fetches the full job description for a given DB job id.
- * First checks if we already have a full description cached in the DB.
- * If the stored description is truncated (<600 chars), fetches the Adzuna
- * job page, extracts the full description from the JSON-LD structured data,
- * caches it back to the DB, and returns it.
+ * Constructs the canonical Adzuna details URL from external_id (avoids
+ * land/ad redirect URLs which point to third-party boards).
+ * Extracts description from JSON-LD or .adp-body div, caches to DB.
  *
  * Requires authentication.
  */
@@ -29,9 +28,9 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid job id' }, { status: 400 });
   }
 
-  // Load current description + redirect_url from DB
+  // Load current description + external_id from DB
   const rows = await query<RowDataPacket[]>(
-    'SELECT description, redirect_url FROM jobs WHERE id = ?',
+    'SELECT description, external_id FROM jobs WHERE id = ?',
     [jobId]
   );
 
@@ -39,20 +38,22 @@ export async function GET(
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  const { description, redirect_url } = rows[0];
+  const { description, external_id } = rows[0];
 
   // If description is already long enough, return it directly
   if (description && description.length >= 600) {
     return NextResponse.json({ description });
   }
 
-  // Otherwise try to fetch full description from Adzuna job page
-  if (!redirect_url) {
+  if (!external_id) {
     return NextResponse.json({ description: description || '' });
   }
 
+  // Build canonical Adzuna details URL from external_id — avoids land/ad redirects
+  const adzunaUrl = `https://www.adzuna.co.uk/jobs/details/${external_id}?utm_medium=api&utm_source=0801d0da`;
+
   try {
-    const res = await fetch(redirect_url, {
+    const res = await fetch(adzunaUrl, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
