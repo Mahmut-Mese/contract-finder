@@ -17,6 +17,7 @@ const API_ROUTES: { path: string; method: 'GET' | 'POST'; expectedStatus: number
   { path: '/api/notifications', method: 'GET', expectedStatus: 401 },
   { path: '/api/cv', method: 'GET', expectedStatus: 401 },
   { path: '/api/applications', method: 'GET', expectedStatus: 401 },
+  { path: '/api/saved-searches', method: 'GET', expectedStatus: 401 },
   { path: '/api/cron/match', method: 'GET', expectedStatus: 200 },
   { path: '/api/fetch-jobs', method: 'POST', expectedStatus: 401 },
 ];

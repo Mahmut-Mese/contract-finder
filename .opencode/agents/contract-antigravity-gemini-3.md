@@ -2,6 +2,7 @@
 description: Advanced implementation agent for Contract Finder. Use for integration-heavy work and remaining implementation after the basic pass.
 mode: subagent
 model: google/antigravity-gemini-3.1-pro
+
 temperature: 0.1
 permission:
   edit: allow

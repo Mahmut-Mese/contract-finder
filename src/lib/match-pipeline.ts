@@ -56,7 +56,7 @@ export async function runMatchPipeline(): Promise<MatchPipelineResult> {
     // 2. Process each user
     for (const user of enabledUsers) {
       try {
-        const matchCount = await matchForUser(user.user_id);
+        const matchCount = await matchForUser(user.user_id, logId);
         totalMatchesCreated += matchCount;
         usersProcessed++;
       } catch (err) {
@@ -92,7 +92,7 @@ export async function runMatchPipeline(): Promise<MatchPipelineResult> {
  * Stores results in matched_jobs and creates an in-app notification.
  * Returns the number of new matches created.
  */
-async function matchForUser(userId: string): Promise<number> {
+async function matchForUser(userId: string, logId: number): Promise<number> {
   // Get user profile
   const profile = await getProfileByUserId(userId);
   if (!profile) return 0;
@@ -106,38 +106,45 @@ async function matchForUser(userId: string): Promise<number> {
   if (matches.length === 0) return 0;
 
   // Store matches in database
-  await storeMatches(userId, matches);
+  const inserted = await storeMatches(userId, matches, logId);
 
-  // Create in-app notification
-  await createMatchNotification(userId, matches.length, matches[0].score);
+  // Create in-app notification only if new matches were actually inserted
+  if (inserted > 0) {
+    await createMatchNotification(userId, inserted, matches[0].score);
+  }
 
-  return matches.length;
+  return inserted;
 }
 
 /**
  * Bulk-insert match results into matched_jobs table.
  * Uses INSERT IGNORE to skip any that already exist (shouldn't happen due to getUnmatchedJobs filter).
  */
-async function storeMatches(userId: string, matches: MatchResult[]): Promise<void> {
+async function storeMatches(userId: string, matches: MatchResult[], logId: number): Promise<number> {
   // Build bulk insert — batch in chunks of 50 to avoid huge queries
   const CHUNK_SIZE = 50;
+  let totalInserted = 0;
 
   for (let i = 0; i < matches.length; i += CHUNK_SIZE) {
     const chunk = matches.slice(i, i + CHUNK_SIZE);
-    const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
+    const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
     const values = chunk.flatMap((m) => [
       userId,
       m.jobId,
       m.score,
       m.matchedSkills.join(', '),
+      logId,
     ]);
 
-    await execute(
-      `INSERT IGNORE INTO matched_jobs (user_id, job_id, score, matched_skills)
+    const result = await execute(
+      `INSERT IGNORE INTO matched_jobs (user_id, job_id, score, matched_skills, match_log_id)
        VALUES ${placeholders}`,
       values
     );
+    totalInserted += result.affectedRows;
   }
+
+  return totalInserted;
 }
 
 /**
