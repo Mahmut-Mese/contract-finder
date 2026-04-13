@@ -16,14 +16,15 @@ import type { RowDataPacket } from 'mysql2/promise';
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const jobId = parseInt(params.id, 10);
+  const { id } = await params;
+  const jobId = parseInt(id, 10);
   if (isNaN(jobId)) {
     return NextResponse.json({ error: 'Invalid job id' }, { status: 400 });
   }
