@@ -6,6 +6,7 @@ import { getUserByEmail } from '@/lib/auth-db';
 // ── Auth.js config (JWT strategy — required for credentials provider) ──
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 }, // 30 days
   pages: {
     signIn: '/login',
