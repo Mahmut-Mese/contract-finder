@@ -19,11 +19,26 @@ interface CvInfo {
   createdAt: string;
 }
 
+interface FilterConfig {
+  excludeCompanies?: string[];
+  excludeTitleKeywords?: string[];
+  minScore?: number;
+  remoteOnly?: boolean;
+  datePosted?: string;
+  postedBy?: string;
+  rateMin?: string;
+  rateMax?: string;
+  skillsFilter?: string;
+  locationFilter?: string;
+  remotePref?: string;
+  contractLengthFilter?: string;
+}
+
 interface SavedFilter {
   id: number;
   name: string;
   is_active: number | boolean;
-  filters: string | Record<string, unknown>;
+  filters: string | FilterConfig;
   created_at: string;
   updated_at: string;
 }
@@ -154,16 +169,16 @@ export default function ProfilePage() {
   };
 
   const formatFilterSummary = (filter: SavedFilter): string => {
-    let f: Record<string, unknown>;
+    let f: FilterConfig;
     try {
-      f = typeof filter.filters === 'string' ? JSON.parse(filter.filters) : filter.filters;
+      f = typeof filter.filters === 'string' ? JSON.parse(filter.filters) as FilterConfig : filter.filters;
     } catch {
       return 'Invalid filter data';
     }
     const parts: string[] = [];
     if (f.excludeCompanies?.length) parts.push(`Excludes: ${f.excludeCompanies.join(', ')}`);
     if (f.excludeTitleKeywords?.length) parts.push(`No keywords: ${f.excludeTitleKeywords.join(', ')}`);
-    if (f.minScore > 0) parts.push(`Min score: ${f.minScore}`);
+    if ((f.minScore ?? 0) > 0) parts.push(`Min score: ${f.minScore}`);
     if (f.remoteOnly) parts.push('Remote only');
     if (f.datePosted) parts.push(`Last ${f.datePosted} days`);
     if (f.postedBy) parts.push(`Company: ${f.postedBy}`);
