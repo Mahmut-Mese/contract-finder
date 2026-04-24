@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Paths that don't require authentication
-const publicPaths = ['/', '/login', '/signup', '/api/auth', '/api/fetch-jobs', '/api/jobs', '/api/fetch-logs', '/api/match-logs', '/api/profile', '/api/matches', '/api/notifications', '/api/cron', '/api/cv', '/api/applications', '/api/saved-searches'];
+const publicPaths = ['/', '/login', '/signup', '/api/auth', '/api/health', '/api/fetch-jobs', '/api/jobs', '/api/fetch-logs', '/api/match-logs', '/api/profile', '/api/matches', '/api/notifications', '/api/cron', '/api/cv', '/api/applications', '/api/saved-searches'];
 
 function isPublic(pathname: string): boolean {
   return publicPaths.some((p) => pathname === p || pathname.startsWith(p + '/'));
