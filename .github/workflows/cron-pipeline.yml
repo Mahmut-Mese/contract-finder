@@ -2,43 +2,38 @@ name: Hourly Job Pipeline
 
 on:
   schedule:
-    # Fetch jobs every hour at :00
     - cron: '0 * * * *'
-  workflow_dispatch: # Allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   fetch-and-match:
     runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      FETCH_SECRET: ${{ secrets.FETCH_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - name: Fetch new jobs from Adzuna
         run: |
-          echo "Fetching jobs..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "${{ secrets.APP_URL }}/api/fetch-jobs" \
-            -H "x-fetch-secret: ${{ secrets.FETCH_SECRET }}" \
-            -H "Content-Type: application/json" \
-            --max-time 60)
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "Fetch: HTTP $HTTP_CODE - $BODY"
+          echo "Fetching jobs from ${APP_URL}..."
+          HTTP_CODE=$(curl -s -o /tmp/fetch.json -w "%{http_code}" -X POST "${APP_URL}/api/fetch-jobs" -H "x-fetch-secret: ${FETCH_SECRET}" --max-time 60)
+          cat /tmp/fetch.json
+          echo ""
+          echo "HTTP Status: $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
             echo "::warning::Fetch failed with HTTP $HTTP_CODE"
           fi
 
       - name: Wait for jobs to be stored
-        run: sleep 30
+        run: sleep 15
 
-      - name: Run matching & send emails
+      - name: Run matching and send emails
         run: |
           echo "Running match pipeline..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "${{ secrets.APP_URL }}/api/cron/match" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json" \
-            --max-time 120)
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "Match: HTTP $HTTP_CODE - $BODY"
+          HTTP_CODE=$(curl -s -o /tmp/match.json -w "%{http_code}" -X POST "${APP_URL}/api/cron/match" -H "x-cron-secret: ${CRON_SECRET}" --max-time 120)
+          cat /tmp/match.json
+          echo ""
+          echo "HTTP Status: $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
             echo "::error::Match pipeline failed with HTTP $HTTP_CODE"
             exit 1
