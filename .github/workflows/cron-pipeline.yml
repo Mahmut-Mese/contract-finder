@@ -1,0 +1,45 @@
+name: Hourly Job Pipeline
+
+on:
+  schedule:
+    # Fetch jobs every hour at :00
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  fetch-and-match:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch new jobs from Adzuna
+        run: |
+          echo "Fetching jobs..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/fetch-jobs" \
+            -H "x-fetch-secret: ${{ secrets.FETCH_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 60)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Fetch: HTTP $HTTP_CODE - $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning::Fetch failed with HTTP $HTTP_CODE"
+          fi
+
+      - name: Wait for jobs to be stored
+        run: sleep 30
+
+      - name: Run matching & send emails
+        run: |
+          echo "Running match pipeline..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/cron/match" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 120)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Match: HTTP $HTTP_CODE - $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Match pipeline failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
