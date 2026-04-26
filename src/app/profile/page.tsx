@@ -361,19 +361,27 @@ export default function ProfilePage() {
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '1.25rem' }}>
           <label style={labelStyle} htmlFor="skillInput">Skills</label>
-          <div style={{
-            border: '1px solid #d1d5db',
-            borderRadius: 6,
-            padding: '0.5rem',
-            display: 'flex',
-            flexWrap: 'wrap' as const,
-            gap: '0.375rem',
-            alignItems: 'center',
-            minHeight: 44,
-            cursor: 'text',
-          }}
-            onClick={() => document.getElementById('skillInput')?.focus()}
-          >
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              id="skillInput"
+              type="text"
+              value={skillInput}
+              onChange={(e) => setSkillInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const val = skillInput.trim().toLowerCase();
+                  if (val && !skillTags.includes(val)) {
+                    setSkillTags(prev => [...prev, val]);
+                  }
+                  setSkillInput('');
+                }
+              }}
+              placeholder="Type a skill and press Enter"
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.5rem' }}>
             {skillTags.map((tag, i) => (
               <span
                 key={i}
@@ -394,10 +402,7 @@ export default function ProfilePage() {
                 {tag}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSkillTags(prev => prev.filter((_, idx) => idx !== i));
-                  }}
+                  onClick={() => setSkillTags(prev => prev.filter((_, idx) => idx !== i))}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -413,36 +418,8 @@ export default function ProfilePage() {
                 </button>
               </span>
             ))}
-            <input
-              id="skillInput"
-              type="text"
-              value={skillInput}
-              onChange={(e) => setSkillInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const val = skillInput.trim().toLowerCase();
-                  if (val && !skillTags.includes(val)) {
-                    setSkillTags(prev => [...prev, val]);
-                  }
-                  setSkillInput('');
-                }
-                if (e.key === 'Backspace' && skillInput === '' && skillTags.length > 0) {
-                  setSkillTags(prev => prev.slice(0, -1));
-                }
-              }}
-              placeholder={skillTags.length === 0 ? 'Type a skill and press Enter' : ''}
-              style={{
-                border: 'none',
-                outline: 'none',
-                fontSize: '0.875rem',
-                flex: 1,
-                minWidth: 120,
-                padding: '0.25rem',
-              }}
-            />
           </div>
-          <p style={helpStyle}>Press Enter to add each skill · Backspace to remove last</p>
+          <p style={helpStyle}>Press Enter to add each skill</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
