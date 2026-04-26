@@ -192,9 +192,6 @@ export default function AdminPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Contract Finder — Admin</h1>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={loadAll} disabled={loading} style={btnStyle}>
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
           <button
             onClick={triggerFetch}
             disabled={fetching || matching}

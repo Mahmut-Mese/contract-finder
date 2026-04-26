@@ -44,7 +44,8 @@ interface SavedFilter {
 }
 
 export default function ProfilePage() {
-  const [skills, setSkills] = useState('');
+  const [skillTags, setSkillTags] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState('');
   const [minRate, setMinRate] = useState('');
   const [maxRate, setMaxRate] = useState('');
   const [location, setLocation] = useState('');
@@ -73,7 +74,7 @@ export default function ProfilePage() {
         if (!res.ok) throw new Error('Failed to load profile');
         const data = await res.json();
         const p: ProfileData = data.profile;
-        setSkills(p.skills || '');
+        setSkillTags(p.skills ? p.skills.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
         setMinRate(p.min_rate != null ? String(p.min_rate) : '');
         setMaxRate(p.max_rate != null ? String(p.max_rate) : '');
         setLocation(p.location || '');
@@ -283,7 +284,7 @@ export default function ProfilePage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          skills: skills || null,
+          skills: skillTags.length > 0 ? skillTags.join(', ') : null,
           min_rate: minRate ? Number(minRate) : null,
           max_rate: maxRate ? Number(maxRate) : null,
           location: location || null,
@@ -359,16 +360,89 @@ export default function ProfilePage() {
 
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '1.25rem' }}>
-          <label style={labelStyle} htmlFor="skills">Skills</label>
-          <input
-            id="skills"
-            type="text"
-            value={skills}
-            onChange={(e) => setSkills(e.target.value)}
-            placeholder="react, typescript, node.js, aws"
-            style={inputStyle}
-          />
-          <p style={helpStyle}>Comma-separated list of your tech skills</p>
+          <label style={labelStyle} htmlFor="skillInput">Skills</label>
+          <div style={{
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            padding: '0.5rem',
+            display: 'flex',
+            flexWrap: 'wrap' as const,
+            gap: '0.375rem',
+            alignItems: 'center',
+            minHeight: 44,
+            cursor: 'text',
+          }}
+            onClick={() => document.getElementById('skillInput')?.focus()}
+          >
+            {skillTags.map((tag, i) => (
+              <span
+                key={i}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  background: '#eff6ff',
+                  color: '#1d4ed8',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 4,
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tag}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSkillTags(prev => prev.filter((_, idx) => idx !== i));
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#1d4ed8',
+                    fontSize: '0.9rem',
+                    lineHeight: 1,
+                    padding: '0 0.125rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              id="skillInput"
+              type="text"
+              value={skillInput}
+              onChange={(e) => setSkillInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const val = skillInput.trim().toLowerCase();
+                  if (val && !skillTags.includes(val)) {
+                    setSkillTags(prev => [...prev, val]);
+                  }
+                  setSkillInput('');
+                }
+                if (e.key === 'Backspace' && skillInput === '' && skillTags.length > 0) {
+                  setSkillTags(prev => prev.slice(0, -1));
+                }
+              }}
+              placeholder={skillTags.length === 0 ? 'Type a skill and press Enter' : ''}
+              style={{
+                border: 'none',
+                outline: 'none',
+                fontSize: '0.875rem',
+                flex: 1,
+                minWidth: 120,
+                padding: '0.25rem',
+              }}
+            />
+          </div>
+          <p style={helpStyle}>Press Enter to add each skill · Backspace to remove last</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
