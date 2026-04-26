@@ -87,13 +87,16 @@ export default function DashboardPage() {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [companyInput, setCompanyInput] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
+  const [skillsFilterTags, setSkillsFilterTags] = useState<string[]>([]);
+  const [skillsFilterInput, setSkillsFilterInput] = useState('');
 
   // New filter state (display values)
   const [datePosted, setDatePosted] = useState("");
   const [postedBy, setPostedBy] = useState("");
   const [rateMin, setRateMin] = useState("");
   const [rateMax, setRateMax] = useState("");
-  const [skillsFilter, setSkillsFilter] = useState("");
+  // skillsFilter is now derived from skillsFilterTags
+  const skillsFilter = skillsFilterTags.join(', ');
   const [locationFilter, setLocationFilter] = useState("");
   const [remotePref, setRemotePref] = useState("");
   const [contractLengthFilter, setContractLengthFilter] = useState("");
@@ -176,7 +179,7 @@ export default function DashboardPage() {
     setPostedBy(f.postedBy || "");
     setRateMin(f.rateMin || "");
     setRateMax(f.rateMax || "");
-    setSkillsFilter(f.skillsFilter || "");
+    setSkillsFilterTags(f.skillsFilter ? f.skillsFilter.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
     setLocationFilter(f.locationFilter || "");
     setRemotePref(f.remotePref || "");
     setContractLengthFilter(f.contractLengthFilter || "");
@@ -459,12 +462,33 @@ export default function DashboardPage() {
             {/* Skills */}
             <div>
               <label style={filterLabelStyle}>Skills</label>
-              <input
-                value={skillsFilter}
-                onChange={(e) => setSkillsFilter(e.target.value)}
-                placeholder="e.g. React, Node"
-                style={filterInputStyle}
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  value={skillsFilterInput}
+                  onChange={(e) => setSkillsFilterInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && skillsFilterInput.trim()) {
+                      const val = skillsFilterInput.trim().toLowerCase();
+                      if (!skillsFilterTags.includes(val)) {
+                        setSkillsFilterTags(prev => [...prev, val]);
+                      }
+                      setSkillsFilterInput('');
+                      setPage(0);
+                    }
+                  }}
+                  placeholder="Type & press Enter"
+                  style={filterInputStyle}
+                />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.5rem' }}>
+                {skillsFilterTags.map((s, i) => (
+                  <span key={i} style={tagStyle}>
+                    {s}
+                    <button onClick={() => { setSkillsFilterTags(prev => prev.filter((_, idx) => idx !== i)); setPage(0); }}
+                      style={tagRemoveStyle}>×</button>
+                  </span>
+                ))}
+              </div>
             </div>
 
             {/* Location */}
@@ -587,7 +611,8 @@ export default function DashboardPage() {
                   setPostedBy("");
                   setRateMin("");
                   setRateMax("");
-                  setSkillsFilter("");
+                  setSkillsFilterTags([]);
+                  setSkillsFilterInput('');
                   setLocationFilter("");
                   setRemotePref("");
                   setContractLengthFilter("");
