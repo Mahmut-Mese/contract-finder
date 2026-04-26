@@ -1,8 +1,9 @@
 name: Hourly Job Pipeline
 
 on:
-  schedule:
-    - cron: '0 * * * *'
+  # schedule disabled – using cron-job.org for precise hourly timing
+  # schedule:
+  #   - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:

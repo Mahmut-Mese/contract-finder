@@ -1,5 +1,6 @@
 import { fetchAdzunaJobs } from '@/lib/adzuna';
-import { normalizeAdzunaJobs } from '@/lib/normalize';
+import { fetchLinkedInJobs } from '@/lib/linkedin';
+import { normalizeAdzunaJobs, normalizeLinkedInJobs } from '@/lib/normalize';
 import { execute, query, closePool } from '@/lib/db';
 import type { RowDataPacket } from 'mysql2/promise';
 
@@ -8,8 +9,8 @@ import type { RowDataPacket } from 'mysql2/promise';
 /**
  * Run a single fetch cycle:
  * 1. Create a fetch_log entry (status: running)
- * 2. Fetch jobs from Adzuna
- * 3. Normalize them
+ * 2. Fetch jobs from Adzuna and LinkedIn in parallel
+ * 3. Normalize them into the same schema
  * 4. Insert into DB, skipping duplicates via INSERT IGNORE
  * 5. Update the fetch_log entry with results
  *
@@ -21,6 +22,7 @@ export async function runFetchCycle(): Promise<{
   jobsNew: number;
   jobsDuplicate: number;
   status: string;
+  sources: { adzuna: number; linkedin: number };
   error?: string;
 }> {
   const startedAt = new Date();
@@ -28,24 +30,44 @@ export async function runFetchCycle(): Promise<{
   // 1. Create fetch log
   const logResult = await execute(
     'INSERT INTO fetch_logs (started_at, source, status) VALUES (?, ?, ?)',
-    [startedAt, 'adzuna', 'running']
+    [startedAt, 'adzuna+linkedin', 'running']
   );
   const logId = logResult.insertId;
 
   try {
-    // 2. Fetch from Adzuna
+    // 2. Fetch from both sources in parallel
     console.log(`[pipeline] Starting fetch cycle (log #${logId})`);
-    const rawJobs = await fetchAdzunaJobs();
 
-    // 3. Normalize
-    const normalizedJobs = normalizeAdzunaJobs(rawJobs);
-    console.log(`[pipeline] Normalized ${normalizedJobs.length} jobs`);
+    const [adzunaRaw, linkedinRaw] = await Promise.allSettled([
+      fetchAdzunaJobs(),
+      fetchLinkedInJobs(),
+    ]);
+
+    // Handle partial failures gracefully
+    const adzunaJobs = adzunaRaw.status === 'fulfilled' ? adzunaRaw.value : [];
+    const linkedinJobs = linkedinRaw.status === 'fulfilled' ? linkedinRaw.value : [];
+
+    if (adzunaRaw.status === 'rejected') {
+      console.error('[pipeline] Adzuna fetch failed:', adzunaRaw.reason);
+    }
+    if (linkedinRaw.status === 'rejected') {
+      console.error('[pipeline] LinkedIn fetch failed:', linkedinRaw.reason);
+    }
+
+    // 3. Normalize both into the same schema
+    const normalizedAdzuna = normalizeAdzunaJobs(adzunaJobs);
+    const normalizedLinkedIn = normalizeLinkedInJobs(linkedinJobs);
+    const allNormalized = [...normalizedAdzuna, ...normalizedLinkedIn];
+
+    console.log(
+      `[pipeline] Normalized ${normalizedAdzuna.length} Adzuna + ${normalizedLinkedIn.length} LinkedIn = ${allNormalized.length} total`
+    );
 
     // 4. Insert with deduplication (INSERT IGNORE skips duplicate unique key)
     let jobsNew = 0;
     let jobsDuplicate = 0;
 
-    for (const job of normalizedJobs) {
+    for (const job of allNormalized) {
       const result = await execute(
         `INSERT IGNORE INTO jobs 
          (external_id, source, title, company, location, description, 
@@ -83,15 +105,19 @@ export async function runFetchCycle(): Promise<{
       `UPDATE fetch_logs 
        SET finished_at = ?, jobs_fetched = ?, jobs_new = ?, jobs_duplicate = ?, status = ?
        WHERE id = ?`,
-      [new Date(), normalizedJobs.length, jobsNew, jobsDuplicate, 'completed', logId]
+      [new Date(), allNormalized.length, jobsNew, jobsDuplicate, 'completed', logId]
     );
 
     return {
       logId,
-      jobsFetched: normalizedJobs.length,
+      jobsFetched: allNormalized.length,
       jobsNew,
       jobsDuplicate,
       status: 'completed',
+      sources: {
+        adzuna: normalizedAdzuna.length,
+        linkedin: normalizedLinkedIn.length,
+      },
     };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -111,6 +137,7 @@ export async function runFetchCycle(): Promise<{
       jobsNew: 0,
       jobsDuplicate: 0,
       status: 'failed',
+      sources: { adzuna: 0, linkedin: 0 },
       error: errorMsg,
     };
   }
