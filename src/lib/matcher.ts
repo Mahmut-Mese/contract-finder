@@ -24,18 +24,43 @@ export interface MatchResult {
 }
 
 // ── Scoring weights ──
-// Simple keyword matching for now.
-// LATER: NLP, TF-IDF, weighted scoring, skill synonyms
 
 const WEIGHTS = {
   SKILL_IN_TITLE: 15,       // per skill found in title
   SKILL_IN_DESCRIPTION: 8,  // per skill found in description
-  RATE_IN_RANGE: 20,        // salary overlaps with user's rate range
-  LOCATION_MATCH: 15,       // job location contains user's location
-  REMOTE_MATCH: 10,         // job mentions remote and user wants remote
+  RATE_IN_RANGE: 10,        // salary overlaps with user's rate range
+  LOCATION_MATCH: 10,       // job location contains user's location
+  REMOTE_MATCH: 5,          // job mentions remote and user wants remote
 };
 
 const MAX_SCORE = 100;
+
+// Minimum score a job must reach to be stored as a match.
+// 15 = at least one skill in the title, or two skills in description.
+const MIN_MATCH_SCORE = 15;
+
+// ── Helpers ──
+
+/**
+ * Build a regex that matches a skill as a whole word/phrase.
+ * Handles multi-word skills like "react native" or special chars like ".net", "c#", "c++".
+ */
+function buildSkillRegex(skill: string): RegExp {
+  // Escape regex special characters but keep it readable
+  const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Use word boundaries for most skills.
+  // For very short skills (1-2 chars like "c", "r", "go"), require stricter boundaries.
+  if (skill.length <= 2) {
+    // Short skills: must be surrounded by whitespace, punctuation, or string boundaries
+    // Avoids matching "c" inside "architect" or "go" inside "google"
+    return new RegExp(`(?:^|[\\s,;|/()\\[\\]{}])${escaped}(?:$|[\\s,;|/()\\[\\]{}])`, 'i');
+  }
+  // For skills starting with special chars (like .net, c#, c++)
+  if (/^[^a-zA-Z0-9]/.test(skill)) {
+    return new RegExp(`(?:^|\\s)${escaped}\\b`, 'i');
+  }
+  return new RegExp(`\\b${escaped}\\b`, 'i');
+}
 
 // ── Matching logic ──
 
@@ -58,14 +83,15 @@ export function scoreJob(job: MatchableJob, profile: DbProfile): MatchResult {
     return { jobId: job.id, score: 0, matchedSkills: [] };
   }
 
-  const titleLower = (job.title || '').toLowerCase();
-  const descLower = (job.description || '').toLowerCase();
+  const title = job.title || '';
+  const description = job.description || '';
   const locationLower = (job.location || '').toLowerCase();
 
-  // ── Skill matching ──
+  // ── Skill matching (word-boundary aware) ──
   for (const skill of userSkills) {
-    const inTitle = titleLower.includes(skill);
-    const inDesc = descLower.includes(skill);
+    const regex = buildSkillRegex(skill);
+    const inTitle = regex.test(title);
+    const inDesc = regex.test(description);
 
     if (inTitle) {
       score += WEIGHTS.SKILL_IN_TITLE;
@@ -74,6 +100,12 @@ export function scoreJob(job: MatchableJob, profile: DbProfile): MatchResult {
       score += WEIGHTS.SKILL_IN_DESCRIPTION;
       matchedSkills.push(skill);
     }
+  }
+
+  // ── HARD REQUIREMENT: at least one skill must match ──
+  // Rate/location/remote alone don't make a relevant match.
+  if (matchedSkills.length === 0) {
+    return { jobId: job.id, score: 0, matchedSkills: [] };
   }
 
   // ── Rate range overlap ──
@@ -106,6 +138,8 @@ export function scoreJob(job: MatchableJob, profile: DbProfile): MatchResult {
 
   // ── Remote preference match ──
   if (profile.remote_preference === 'remote') {
+    const titleLower = title.toLowerCase();
+    const descLower = description.toLowerCase();
     const remoteSignals = ['remote', 'work from home', 'wfh', 'fully remote'];
     const isRemote = remoteSignals.some(
       (signal) => titleLower.includes(signal) || descLower.includes(signal)
@@ -142,14 +176,14 @@ export async function getUnmatchedJobs(userId: string): Promise<MatchableJob[]> 
 
 /**
  * Match all unmatched jobs against a user profile.
- * Returns only jobs with score > 0 (at least one signal matched).
+ * Returns only jobs that meet the minimum score threshold.
  */
 export function matchJobsForUser(jobs: MatchableJob[], profile: DbProfile): MatchResult[] {
   const results: MatchResult[] = [];
 
   for (const job of jobs) {
     const result = scoreJob(job, profile);
-    if (result.score > 0) {
+    if (result.score >= MIN_MATCH_SCORE) {
       results.push(result);
     }
   }
