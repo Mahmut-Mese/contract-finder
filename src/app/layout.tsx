@@ -28,6 +28,36 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Auto-recover from ChunkLoadErrors caused by stale browser cache after deployments */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('error', function(e) {
+                if (
+                  e.message && (
+                    e.message.includes('ChunkLoadError') ||
+                    e.message.includes('Failed to load chunk') ||
+                    e.message.includes('Loading chunk') ||
+                    e.message.includes('Unexpected token')
+                  )
+                ) {
+                  var key = 'chunkReloadAttempt';
+                  var attempts = parseInt(sessionStorage.getItem(key) || '0');
+                  if (attempts < 3) {
+                    sessionStorage.setItem(key, attempts + 1);
+                    window.location.reload();
+                  }
+                }
+              });
+              // Reset reload counter on successful full load
+              window.addEventListener('load', function() {
+                sessionStorage.removeItem('chunkReloadAttempt');
+              });
+            `,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>
         <SessionProvider>
           <Navbar />
