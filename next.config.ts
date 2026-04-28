@@ -7,13 +7,22 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Apply to all routes, Next.js automatically ignores _next/static
-        source: "/(.*)",
+        // Prevent caching of HTML pages — critical to avoid serving stale
+        // HTML after a new deployment (which causes ChunkLoadErrors)
+        source: "/((?!_next/static|_next/image|favicon\\.ico).*)",
         headers: [
-          {
-            key: "X-LiteSpeed-Cache-Control",
-            value: "no-cache",
-          },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
+          // LiteSpeed-specific header to bypass Hostinger's page cache
+          { key: "X-LiteSpeed-Cache-Control", value: "no-cache" },
+        ],
+      },
+      {
+        // Static JS/CSS assets have content hashes in filenames — safe to cache long-term
+        source: "/_next/static/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
     ];

@@ -33,24 +33,29 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              window.addEventListener('error', function(e) {
-                if (
-                  e.message && (
-                    e.message.includes('ChunkLoadError') ||
-                    e.message.includes('Failed to load chunk') ||
-                    e.message.includes('Loading chunk') ||
-                    e.message.includes('Unexpected token')
-                  )
-                ) {
-                  var key = 'chunkReloadAttempt';
-                  var attempts = parseInt(sessionStorage.getItem(key) || '0');
-                  if (attempts < 3) {
-                    sessionStorage.setItem(key, attempts + 1);
-                    window.location.reload();
-                  }
+              function isChunkError(msg) {
+                return msg && (
+                  msg.includes('ChunkLoadError') ||
+                  msg.includes('Failed to load chunk') ||
+                  msg.includes('Loading chunk') ||
+                  msg.includes('Unexpected token')
+                );
+              }
+              function tryReload() {
+                var key = 'chunkReloadAttempt';
+                var attempts = parseInt(sessionStorage.getItem(key) || '0');
+                if (attempts < 3) {
+                  sessionStorage.setItem(key, attempts + 1);
+                  window.location.reload();
                 }
+              }
+              window.addEventListener('error', function(e) {
+                if (isChunkError(e.message)) tryReload();
               });
-              // Reset reload counter on successful full load
+              window.addEventListener('unhandledrejection', function(e) {
+                var msg = e.reason && (e.reason.message || String(e.reason));
+                if (isChunkError(msg)) tryReload();
+              });
               window.addEventListener('load', function() {
                 sessionStorage.removeItem('chunkReloadAttempt');
               });
