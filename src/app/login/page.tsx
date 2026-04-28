@@ -1,18 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
 import Link from 'next/link';
 
-function LoginForm() {
+// Tiny component that reads searchParams — must be inside Suspense
+function CallbackUrlReader({ onReady }: { onReady: (url: string) => void }) {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  // Call onReady synchronously during render — safe in React 18
+  onReady(callbackUrl);
+  return null;
+}
+
+export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [callbackUrl, setCallbackUrl] = useState('/dashboard');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +32,6 @@ function LoginForm() {
         password,
         redirectTo: callbackUrl,
       });
-      // signIn redirects on success, so we only reach catch on failure
     } catch {
       setError('Invalid email or password');
       setLoading(false);
@@ -34,6 +40,11 @@ function LoginForm() {
 
   return (
     <div style={{ maxWidth: 400, margin: '4rem auto', padding: '2rem', fontFamily: 'var(--font-geist-sans)' }}>
+      {/* Resolve callbackUrl without blocking the form render */}
+      <Suspense fallback={null}>
+        <CallbackUrlReader onReady={setCallbackUrl} />
+      </Suspense>
+
       <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem', textAlign: 'center' }}>
         Sign In
       </h1>
@@ -81,14 +92,6 @@ function LoginForm() {
         <Link href="/signup" style={linkStyle}>Create one</Link>
       </p>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>}>
-      <LoginForm />
-    </Suspense>
   );
 }
 
