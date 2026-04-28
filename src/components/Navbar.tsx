@@ -3,6 +3,8 @@
 import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 
+import Link from 'next/link';
+
 export default function Navbar() {
   const { data: session, status } = useSession();
   const isAuth = status === 'authenticated';
@@ -33,29 +35,29 @@ export default function Navbar() {
 
   return (
     <nav style={navStyle}>
-      <a href="/" style={{ ...brandStyle, textDecoration: 'none' }}>
+      <Link href="/" style={{ ...brandStyle, textDecoration: 'none' }}>
         Contract Finder
-      </a>
+      </Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
         {isAuth ? (
           <>
             {isAdmin ? (
               /* Admin nav: only Admin link */
-              <a href="/admin" style={navLinkStyle}>Admin</a>
+              <Link href="/admin" style={navLinkStyle}>Admin</Link>
             ) : (
               /* Regular user nav */
               <>
-                <a href="/dashboard" style={navLinkStyle}>Dashboard</a>
-                <a href="/profile" style={navLinkStyle}>Profile</a>
-                <a href="/history" style={navLinkStyle}>History</a>
-                <a href="/notifications" style={{ ...navLinkStyle, position: 'relative' }}>
+                <Link href="/dashboard" style={navLinkStyle}>Dashboard</Link>
+                <Link href="/profile" style={navLinkStyle}>Profile</Link>
+                <Link href="/history" style={navLinkStyle}>History</Link>
+                <Link href="/notifications" style={{ ...navLinkStyle, position: 'relative' }}>
                   Notifications
                   {unreadCount > 0 && (
                     <span style={badgeStyle}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
-                </a>
+                </Link>
               </>
             )}
             <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{session?.user?.email}</span>
@@ -67,7 +69,7 @@ export default function Navbar() {
             </button>
           </>
         ) : (
-          <a href="/login" style={navLinkStyle}>Sign In</a>
+          <Link href="/login" style={navLinkStyle}>Sign In</Link>
         )}
       </div>
     </nav>

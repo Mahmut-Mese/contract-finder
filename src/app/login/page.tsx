@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import Link from 'next/link';
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -77,7 +78,7 @@ function LoginForm() {
 
       <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
         Don&apos;t have an account?{' '}
-        <a href="/signup" style={linkStyle}>Create one</a>
+        <Link href="/signup" style={linkStyle}>Create one</Link>
       </p>
     </div>
   );
