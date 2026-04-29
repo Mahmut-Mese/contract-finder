@@ -99,22 +99,18 @@ export async function GET(req: NextRequest) {
     }
 
     // Contract rate range filter (user enters daily rate, DB stores annual salary)
-    // Only show jobs that have salary data AND overlap with the user's desired range.
+    // Jobs with no salary data still pass through — only exclude jobs with known salary outside range.
     if (rate_min) {
       const min = Number(rate_min);
       if (!isNaN(min) && min > 0) {
-        // Job's upper bound must be at or above user's minimum daily rate (annual)
-        // Exclude jobs with no salary data at all
-        whereClause += ' AND j.salary_max IS NOT NULL AND j.salary_max >= ?';
+        whereClause += ' AND (j.salary_max IS NULL OR j.salary_max >= ?)';
         params.push(min * 220);
       }
     }
     if (rate_max) {
       const max = Number(rate_max);
       if (!isNaN(max) && max > 0) {
-        // Job's lower bound must be at or below user's maximum daily rate (annual)
-        // Exclude jobs with no salary data at all
-        whereClause += ' AND j.salary_min IS NOT NULL AND j.salary_min <= ?';
+        whereClause += ' AND (j.salary_min IS NULL OR j.salary_min <= ?)';
         params.push(max * 220);
       }
     }
