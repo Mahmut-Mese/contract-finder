@@ -98,18 +98,23 @@ export async function GET(req: NextRequest) {
       params.push(`%${posted_by.trim().toLowerCase()}%`);
     }
 
-    // Contract rate range (salary_min/max are annual, convert day rate to annual: day * 220)
+    // Contract rate range filter (user enters daily rate, DB stores annual salary)
+    // Only show jobs that have salary data AND overlap with the user's desired range.
     if (rate_min) {
       const min = Number(rate_min);
       if (!isNaN(min) && min > 0) {
-        whereClause += ' AND COALESCE(j.salary_max, j.salary_min, 0) >= ?';
+        // Job's upper bound must be at or above user's minimum daily rate (annual)
+        // Exclude jobs with no salary data at all
+        whereClause += ' AND j.salary_max IS NOT NULL AND j.salary_max >= ?';
         params.push(min * 220);
       }
     }
     if (rate_max) {
       const max = Number(rate_max);
       if (!isNaN(max) && max > 0) {
-        whereClause += ' AND COALESCE(j.salary_min, j.salary_max, 0) <= ?';
+        // Job's lower bound must be at or below user's maximum daily rate (annual)
+        // Exclude jobs with no salary data at all
+        whereClause += ' AND j.salary_min IS NOT NULL AND j.salary_min <= ?';
         params.push(max * 220);
       }
     }
