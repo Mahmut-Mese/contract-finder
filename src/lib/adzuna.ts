@@ -7,22 +7,15 @@ const COUNTRY = 'gb';
 const RESULTS_PER_PAGE = 50;
 
 /**
- * Hardcoded search queries for the Initial Phase spike.
- * We keep these broad (no "contract" in what — it filters out too many results).
- * Contract filtering happens post-fetch via title/description/contract_type.
+ * Fallback search queries used when no user skills are available yet.
  */
-const SEARCH_QUERIES = [
-  'javascript developer',
-  'typescript developer',
+const DEFAULT_SEARCH_QUERIES = [
   'react developer',
   'node developer',
   'fullstack developer',
-  'backend developer',
-  'frontend developer',
   'devops engineer',
   'software engineer',
   'python developer',
-  'java developer',
   'cloud engineer',
   '.net developer',
 ];
@@ -104,17 +97,23 @@ async function fetchPage(searchQuery: string, page: number): Promise<AdzunaRespo
  * Fetch UK developer contract jobs from Adzuna.
  *
  * Strategy:
- *  1. Run each search query (page 1 only = 13 API calls, well within 250/day limit)
+ *  1. Run each search query (page 1 only, capped at 15 queries max)
  *  2. Deduplicate in memory by job ID
- *  3. Filter to jobs that look like contracts
+ *  3. Filter to jobs that look like genuine contracts
  *  4. Return the filtered list for DB insertion
+ *
+ * @param searchQueries - Dynamic queries from user skills. Falls back to defaults.
  */
-export async function fetchAdzunaJobs(): Promise<AdzunaJob[]> {
+export async function fetchAdzunaJobs(searchQueries?: string[]): Promise<AdzunaJob[]> {
+  const queries = searchQueries && searchQueries.length > 0
+    ? searchQueries
+    : DEFAULT_SEARCH_QUERIES;
+
   const allJobs: AdzunaJob[] = [];
   const seenIds = new Set<string>();
   let totalRaw = 0;
 
-  for (const searchQuery of SEARCH_QUERIES) {
+  for (const searchQuery of queries) {
     try {
       const data = await fetchPage(searchQuery, 1);
       const jobs = data.results || [];

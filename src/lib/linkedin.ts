@@ -6,21 +6,16 @@ const SEARCH_URL = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPosti
 const JOB_DETAIL_URL = 'https://www.linkedin.com/jobs-guest/jobs/api/jobPosting';
 
 /**
- * Search queries for LinkedIn — kept similar to Adzuna's for consistency.
- * LinkedIn's guest API returns ~10 results per page, so we use fewer queries.
+ * Fallback search queries when no user skills are available.
+ * LinkedIn's guest API returns ~10 results per page.
  */
-const SEARCH_QUERIES = [
-  'javascript developer contract',
-  'typescript developer contract',
+const DEFAULT_SEARCH_QUERIES = [
   'react developer contract',
   'node developer contract',
   'fullstack developer contract',
-  'frontend developer contract',
-  'backend developer contract',
   'devops engineer contract',
   'software engineer contract',
   'python developer contract',
-  'java developer contract',
   'cloud engineer contract',
   '.net developer contract',
 ];
@@ -175,12 +170,16 @@ function delay(ms: number): Promise<void> {
  *  4. Optionally fetch descriptions for new jobs (with rate limiting)
  *  5. Return the full list for DB insertion
  */
-export async function fetchLinkedInJobs(): Promise<LinkedInJob[]> {
+export async function fetchLinkedInJobs(searchQueries?: string[]): Promise<LinkedInJob[]> {
+  const queries = searchQueries && searchQueries.length > 0
+    ? searchQueries.map(q => q.includes('contract') ? q : `${q} contract`)
+    : DEFAULT_SEARCH_QUERIES;
+
   const allJobs: LinkedInJob[] = [];
   const seenIds = new Set<string>();
   let totalRaw = 0;
 
-  for (const keywords of SEARCH_QUERIES) {
+  for (const keywords of queries) {
     try {
       const html = await fetchSearchPage(keywords);
       const jobs = parseSearchResults(html);

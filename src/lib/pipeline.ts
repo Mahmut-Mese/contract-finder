@@ -4,15 +4,64 @@ import { normalizeAdzunaJobs, normalizeLinkedInJobs } from '@/lib/normalize';
 import { execute, query, closePool } from '@/lib/db';
 import type { RowDataPacket } from 'mysql2/promise';
 
+// ── Constants ──
+
+/** Maximum number of search queries per fetch cycle to stay within API limits */
+const MAX_QUERIES = 15;
+
 // ── Job ingestion pipeline ──
+
+/**
+ * Get the top search queries by looking at the most popular skills
+ * across all enabled users. Deduplicates and caps at MAX_QUERIES.
+ * Returns queries like "react developer", "python developer", etc.
+ */
+async function getTopSearchQueries(): Promise<string[]> {
+  try {
+    // Get all skills from enabled users
+    const rows = await query<RowDataPacket[]>(
+      `SELECT skills FROM profiles 
+       WHERE contract_finder_enabled = TRUE 
+         AND skills IS NOT NULL AND skills != ''`
+    );
+
+    if (rows.length === 0) return [];
+
+    // Count skill frequency across all users
+    const skillCount = new Map<string, number>();
+    for (const row of rows) {
+      const skills = (row.skills as string)
+        .split(',')
+        .map((s: string) => s.trim().toLowerCase())
+        .filter(Boolean);
+
+      for (const skill of skills) {
+        skillCount.set(skill, (skillCount.get(skill) || 0) + 1);
+      }
+    }
+
+    // Sort by frequency (most common first) and cap at MAX_QUERIES
+    const topSkills = [...skillCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_QUERIES)
+      .map(([skill]) => `${skill} developer`);
+
+    console.log(`[pipeline] Top ${topSkills.length} search queries from ${rows.length} users:`, topSkills);
+    return topSkills;
+  } catch (err) {
+    console.error('[pipeline] Failed to get user skills, using defaults:', err);
+    return [];
+  }
+}
 
 /**
  * Run a single fetch cycle:
  * 1. Create a fetch_log entry (status: running)
- * 2. Fetch jobs from Adzuna and LinkedIn in parallel
- * 3. Normalize them into the same schema
- * 4. Insert into DB, skipping duplicates via INSERT IGNORE
- * 5. Update the fetch_log entry with results
+ * 2. Build search queries from active users' top skills
+ * 3. Fetch jobs from Adzuna and LinkedIn in parallel
+ * 4. Normalize them into the same schema
+ * 5. Insert into DB, skipping duplicates via INSERT IGNORE
+ * 6. Update the fetch_log entry with results
  *
  * Returns a summary object.
  */
@@ -35,12 +84,14 @@ export async function runFetchCycle(): Promise<{
   const logId = logResult.insertId;
 
   try {
-    // 2. Fetch from both sources in parallel
-    console.log(`[pipeline] Starting fetch cycle (log #${logId})`);
+    // 2. Build dynamic search queries from user skills
+    const searchQueries = await getTopSearchQueries();
+    console.log(`[pipeline] Starting fetch cycle (log #${logId}) with ${searchQueries.length || 'default'} queries`);
 
+    // 3. Fetch from both sources in parallel
     const [adzunaRaw, linkedinRaw] = await Promise.allSettled([
-      fetchAdzunaJobs(),
-      fetchLinkedInJobs(),
+      fetchAdzunaJobs(searchQueries.length > 0 ? searchQueries : undefined),
+      fetchLinkedInJobs(searchQueries.length > 0 ? searchQueries : undefined),
     ]);
 
     // Handle partial failures gracefully
@@ -54,7 +105,7 @@ export async function runFetchCycle(): Promise<{
       console.error('[pipeline] LinkedIn fetch failed:', linkedinRaw.reason);
     }
 
-    // 3. Normalize both into the same schema
+    // 4. Normalize both into the same schema
     const normalizedAdzuna = normalizeAdzunaJobs(adzunaJobs);
     const normalizedLinkedIn = normalizeLinkedInJobs(linkedinJobs);
     const allNormalized = [...normalizedAdzuna, ...normalizedLinkedIn];
