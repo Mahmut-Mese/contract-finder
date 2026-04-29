@@ -36,8 +36,135 @@ export async function GET(req: NextRequest) {
   const contract_length = searchParams.get('contract_length');
 
   try {
-    let whereClause = 'WHERE mj.user_id = ?';
-    const params: (string | number)[] = [session.user.id];
+    let baseWhereClause = 'WHERE mj.user_id = ?';
+    const baseParams: (string | number)[] = [session.user.id];
+
+    if (exclude_companies) {
+      const companies = exclude_companies.split(',').map(c => c.trim()).filter(Boolean);
+      for (const company of companies) {
+        baseWhereClause += ' AND LOWER(j.company) != LOWER(?)';
+        baseParams.push(company);
+      }
+    }
+
+    if (exclude_title_keywords) {
+      const keywords = exclude_title_keywords.split(',').map(k => k.trim()).filter(Boolean);
+      for (const keyword of keywords) {
+        baseWhereClause += ' AND LOWER(j.title) NOT LIKE ?';
+        baseParams.push(`%${keyword.toLowerCase()}%`);
+      }
+    }
+
+    if (min_score) {
+      const score = Number(min_score);
+      if (!isNaN(score)) {
+        baseWhereClause += ' AND mj.score >= ?';
+        baseParams.push(score);
+      }
+    }
+
+    if (remote_only === 'true') {
+      baseWhereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
+    }
+
+    // Date posted filter (days ago)
+    if (date_posted) {
+      const days = Number(date_posted);
+      if (!isNaN(days) && days > 0) {
+        baseWhereClause += ' AND j.posted_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        baseParams.push(days);
+      }
+    }
+
+    // Posted by (positive company match)
+    if (posted_by && posted_by.trim()) {
+      baseWhereClause += ' AND LOWER(j.company) LIKE ?';
+      baseParams.push(`%${posted_by.trim().toLowerCase()}%`);
+    }
+
+    // Contract rate range filter (user enters daily rate, DB stores annual salary)
+    // Compare as daily rate: divide DB salary by 220 to get daily equivalent.
+    // Jobs with no salary data still pass through.
+    if (rate_min) {
+      const min = Number(rate_min);
+      if (!isNaN(min) && min > 0) {
+        baseWhereClause += ' AND (j.salary_max IS NULL OR (j.salary_max / 220) >= ?)';
+        baseParams.push(min);
+      }
+    }
+    if (rate_max) {
+      const max = Number(rate_max);
+      if (!isNaN(max) && max > 0) {
+        baseWhereClause += ' AND (j.salary_min IS NULL OR (j.salary_min / 220) <= ?)';
+        baseParams.push(max);
+      }
+    }
+
+    // Skills filter (comma-separated, match in title or description)
+    if (skills && skills.trim()) {
+      const skillList = skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skillList.length > 0) {
+        const skillConditions = skillList.map(() => "(LOWER(j.title) LIKE ? OR LOWER(j.description) LIKE ?)");
+        baseWhereClause += ` AND (${skillConditions.join(' OR ')})`;
+        for (const skill of skillList) {
+          baseParams.push(`%${skill.toLowerCase()}%`, `%${skill.toLowerCase()}%`);
+        }
+      }
+    }
+
+    // Location filter
+    if (location_filter && location_filter.trim()) {
+      baseWhereClause += ' AND LOWER(j.location) LIKE ?';
+      baseParams.push(`%${location_filter.trim().toLowerCase()}%`);
+    }
+
+    // Remote preference filter
+    if (remote_preference) {
+      if (remote_preference === 'remote') {
+        baseWhereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
+      } else if (remote_preference === 'hybrid') {
+        baseWhereClause += " AND (LOWER(j.title) LIKE '%hybrid%' OR LOWER(j.description) LIKE '%hybrid%')";
+      } else if (remote_preference === 'onsite') {
+        baseWhereClause += " AND (LOWER(j.title) LIKE '%on-site%' OR LOWER(j.title) LIKE '%onsite%' OR LOWER(j.description) LIKE '%on-site%' OR LOWER(j.description) LIKE '%onsite%')";
+      }
+    }
+
+    // Contract length filter
+    if (contract_length && contract_length.trim()) {
+      baseWhereClause += ' AND LOWER(j.description) LIKE ?';
+      baseParams.push(`%${contract_length.trim().toLowerCase()}%`);
+    }
+
+    // ── 1. Get counts for all statuses using the base filters ──
+    const groupCountRows = await query<RowDataPacket[]>(
+      `SELECT mj.status, COUNT(*) as count 
+       FROM matched_jobs mj JOIN jobs j ON j.id = mj.job_id 
+       ${baseWhereClause} 
+       GROUP BY mj.status`,
+      baseParams
+    );
+
+    const counts = {
+      new: 0, viewed: 0, saved: 0, dismissed: 0, applied: 0, deleted: 0,
+      mylist: 0, all: 0
+    };
+
+    let allExceptDismissed = 0;
+
+    for (const row of groupCountRows) {
+      const s = row.status as keyof typeof counts;
+      const c = Number(row.count) || 0;
+      if (counts[s] !== undefined) counts[s] = c;
+      
+      // Calculate derived counts
+      if (s === 'new' || s === 'viewed') counts.mylist += c;
+      if (s !== 'dismissed' && s !== 'deleted') allExceptDismissed += c;
+    }
+    counts.all = allExceptDismissed; // "All" tab usually means everything except dismissed/deleted
+
+    // ── 2. Apply status filter for the main queries ──
+    let whereClause = baseWhereClause;
+    const params = [...baseParams];
 
     if (status) {
       const validGetStatuses = ['new', 'viewed', 'saved', 'dismissed', 'applied', 'deleted', 'mylist'];
@@ -55,103 +182,7 @@ export async function GET(req: NextRequest) {
       whereClause += " AND mj.status NOT IN ('dismissed', 'deleted')";
     }
 
-    if (exclude_companies) {
-      const companies = exclude_companies.split(',').map(c => c.trim()).filter(Boolean);
-      for (const company of companies) {
-        whereClause += ' AND LOWER(j.company) != LOWER(?)';
-        params.push(company);
-      }
-    }
-
-    if (exclude_title_keywords) {
-      const keywords = exclude_title_keywords.split(',').map(k => k.trim()).filter(Boolean);
-      for (const keyword of keywords) {
-        whereClause += ' AND LOWER(j.title) NOT LIKE ?';
-        params.push(`%${keyword.toLowerCase()}%`);
-      }
-    }
-
-    if (min_score) {
-      const score = Number(min_score);
-      if (!isNaN(score)) {
-        whereClause += ' AND mj.score >= ?';
-        params.push(score);
-      }
-    }
-
-    if (remote_only === 'true') {
-      whereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
-    }
-
-    // Date posted filter (days ago)
-    if (date_posted) {
-      const days = Number(date_posted);
-      if (!isNaN(days) && days > 0) {
-        whereClause += ' AND j.posted_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
-        params.push(days);
-      }
-    }
-
-    // Posted by (positive company match)
-    if (posted_by && posted_by.trim()) {
-      whereClause += ' AND LOWER(j.company) LIKE ?';
-      params.push(`%${posted_by.trim().toLowerCase()}%`);
-    }
-
-    // Contract rate range filter (user enters daily rate, DB stores annual salary)
-    // Compare as daily rate: divide DB salary by 220 to get daily equivalent.
-    // Jobs with no salary data still pass through.
-    if (rate_min) {
-      const min = Number(rate_min);
-      if (!isNaN(min) && min > 0) {
-        whereClause += ' AND (j.salary_max IS NULL OR (j.salary_max / 220) >= ?)';
-        params.push(min);
-      }
-    }
-    if (rate_max) {
-      const max = Number(rate_max);
-      if (!isNaN(max) && max > 0) {
-        whereClause += ' AND (j.salary_min IS NULL OR (j.salary_min / 220) <= ?)';
-        params.push(max);
-      }
-    }
-
-    // Skills filter (comma-separated, match in title or description)
-    if (skills && skills.trim()) {
-      const skillList = skills.split(',').map(s => s.trim()).filter(Boolean);
-      if (skillList.length > 0) {
-        const skillConditions = skillList.map(() => "(LOWER(j.title) LIKE ? OR LOWER(j.description) LIKE ?)");
-        whereClause += ` AND (${skillConditions.join(' OR ')})`;
-        for (const skill of skillList) {
-          params.push(`%${skill.toLowerCase()}%`, `%${skill.toLowerCase()}%`);
-        }
-      }
-    }
-
-    // Location filter
-    if (location_filter && location_filter.trim()) {
-      whereClause += ' AND LOWER(j.location) LIKE ?';
-      params.push(`%${location_filter.trim().toLowerCase()}%`);
-    }
-
-    // Remote preference filter
-    if (remote_preference) {
-      if (remote_preference === 'remote') {
-        whereClause += " AND (LOWER(j.title) LIKE '%remote%' OR LOWER(j.description) LIKE '%remote%')";
-      } else if (remote_preference === 'hybrid') {
-        whereClause += " AND (LOWER(j.title) LIKE '%hybrid%' OR LOWER(j.description) LIKE '%hybrid%')";
-      } else if (remote_preference === 'onsite') {
-        whereClause += " AND (LOWER(j.title) LIKE '%on-site%' OR LOWER(j.title) LIKE '%onsite%' OR LOWER(j.description) LIKE '%on-site%' OR LOWER(j.description) LIKE '%onsite%')";
-      }
-    }
-
-    // Contract length filter
-    if (contract_length && contract_length.trim()) {
-      whereClause += ' AND LOWER(j.description) LIKE ?';
-      params.push(`%${contract_length.trim().toLowerCase()}%`);
-    }
-
-    // Get total count
+    // Get total count for the CURRENT status filter
     const countRows = await query<RowDataPacket[]>(
       `SELECT COUNT(*) AS total FROM matched_jobs mj JOIN jobs j ON j.id = mj.job_id ${whereClause}`,
       params
@@ -173,7 +204,7 @@ export async function GET(req: NextRequest) {
       [...params, limit, offset]
     );
 
-    return NextResponse.json({ matches: rows, total, limit, offset });
+    return NextResponse.json({ matches: rows, total, counts, limit, offset });
   } catch (err) {
     console.error('GET /api/matches error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

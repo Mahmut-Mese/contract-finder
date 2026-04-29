@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [matches, setMatches] = useState<MatchedJob[]>([]);
   const [matchTotal, setMatchTotal] = useState(0);
+  const [matchCounts, setMatchCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [matchesLoading, setMatchesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -264,6 +265,7 @@ export default function DashboardPage() {
       const data = await res.json();
       setMatches(data.matches || []);
       setMatchTotal(data.total || 0);
+      if (data.counts) setMatchCounts(data.counts);
     } catch (err) {
       console.error('Failed to load matches:', err);
     } finally {
@@ -288,6 +290,9 @@ export default function DashboardPage() {
 
   const updateMatchStatus = async (matchId: number, status: string) => {
     try {
+      const oldMatch = matches.find(m => m.match_id === matchId);
+      const oldStatus = oldMatch?.status;
+
       const res = await fetch('/api/matches', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -295,10 +300,28 @@ export default function DashboardPage() {
       });
       if (!res.ok) throw new Error('Failed to update');
       
+      // Optimistic count update
+      if (oldStatus && oldStatus !== status) {
+        setMatchCounts(prev => {
+          const next = { ...prev };
+          // Decrement old
+          if (next[oldStatus] !== undefined) next[oldStatus] = Math.max(0, next[oldStatus] - 1);
+          if (oldStatus === 'new' || oldStatus === 'viewed') next.mylist = Math.max(0, (next.mylist || 0) - 1);
+          if (oldStatus !== 'dismissed' && oldStatus !== 'deleted') next.all = Math.max(0, (next.all || 0) - 1);
+
+          // Increment new
+          if (next[status] !== undefined) next[status] = (next[status] || 0) + 1;
+          if (status === 'new' || status === 'viewed') next.mylist = (next.mylist || 0) + 1;
+          if (status !== 'dismissed' && status !== 'deleted') next.all = (next.all || 0) + 1;
+
+          return next;
+        });
+      }
+
       if (!shouldShowInTab(status)) {
         // Remove from view — new status doesn't belong in current tab
         setMatches((prev) => prev.filter((m) => m.match_id !== matchId));
-        setMatchTotal((prev) => prev - 1);
+        setMatchTotal((prev) => Math.max(0, prev - 1));
       } else {
         setMatches((prev) =>
           prev.map((m) => (m.match_id === matchId ? { ...m, status } : m))
@@ -677,19 +700,35 @@ export default function DashboardPage() {
               Matched Contracts {matchTotal > 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>({matchTotal})</span>}
             </h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {filterTabs.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => { setMatchFilter(f); setPage(0); }}
-                  style={{
-                    ...filterBtnStyle,
-                    background: matchFilter === f ? '#2563eb' : 'white',
-                    color: matchFilter === f ? 'white' : '#374151',
-                  }}
-                >
-                  {f === '' ? 'All' : f === 'mylist' ? 'My List' : f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
+              {filterTabs.map((f) => {
+                const count = matchCounts[f === '' ? 'all' : f] || 0;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => { setMatchFilter(f); setPage(0); }}
+                    style={{
+                      ...filterBtnStyle,
+                      background: matchFilter === f ? '#2563eb' : 'white',
+                      color: matchFilter === f ? 'white' : '#374151',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <span>{f === '' ? 'All' : f === 'mylist' ? 'My List' : f.charAt(0).toUpperCase() + f.slice(1)}</span>
+                    <span style={{
+                      background: matchFilter === f ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
+                      color: matchFilter === f ? 'white' : '#6b7280',
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600
+                    }}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
