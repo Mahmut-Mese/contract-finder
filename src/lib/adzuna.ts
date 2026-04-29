@@ -27,7 +27,7 @@ const SEARCH_QUERIES = [
   '.net developer',
 ];
 
-/** Words in title/description that indicate a contract role */
+/** Words in title/description that indicate a genuine contractor/freelance role */
 const CONTRACT_SIGNALS = [
   'contract',
   'contractor',
@@ -38,22 +38,32 @@ const CONTRACT_SIGNALS = [
   'day rate',
   'per day',
   '/day',
-  'fixed term',
-  'fixed-term',
   '6 month',
   '12 month',
   '3 month',
 ];
 
+/** Words that indicate a fixed-term employment role (not a true contractor role) */
+const EXCLUDE_SIGNALS = [
+  'fixed term',
+  'fixed-term',
+  'ftc',
+];
+
 /**
- * Check if a job looks like a contract role based on its metadata.
+ * Check if a job looks like a genuine contractor/freelance role.
+ * Excludes fixed-term contracts which are essentially temp employment.
  */
 function looksLikeContract(job: AdzunaJob): boolean {
+  const text = `${job.title} ${job.description}`.toLowerCase();
+
+  // Exclude fixed-term employment roles
+  if (EXCLUDE_SIGNALS.some((signal) => text.includes(signal))) return false;
+
   // Explicit contract_type from Adzuna
   if (job.contract_type === 'contract') return true;
 
   // Check title and description for contract signals
-  const text = `${job.title} ${job.description}`.toLowerCase();
   return CONTRACT_SIGNALS.some((signal) => text.includes(signal));
 }
 
