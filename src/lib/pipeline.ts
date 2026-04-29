@@ -6,17 +6,19 @@ import type { RowDataPacket } from 'mysql2/promise';
 
 // ── Constants ──
 
-/** Maximum number of search queries per fetch cycle to stay within API limits */
-const MAX_QUERIES = 15;
+/** Adzuna free tier: 250 calls/day → 10/hour × 24 = 240, safely under limit */
+const ADZUNA_MAX_QUERIES = 10;
 
 // ── Job ingestion pipeline ──
 
 /**
- * Get the top search queries by looking at the most popular skills
- * across all enabled users. Deduplicates and caps at MAX_QUERIES.
+ * Get search queries by looking at the most popular skills
+ * across all enabled users. Deduplicates and sorts by frequency.
  * Returns queries like "react developer", "python developer", etc.
+ *
+ * @param limit - Max queries to return. Pass 0 or undefined for no limit.
  */
-async function getTopSearchQueries(): Promise<string[]> {
+async function getTopSearchQueries(limit?: number): Promise<string[]> {
   try {
     // Get all skills from enabled users
     const rows = await query<RowDataPacket[]>(
@@ -40,13 +42,18 @@ async function getTopSearchQueries(): Promise<string[]> {
       }
     }
 
-    // Sort by frequency (most common first) and cap at MAX_QUERIES
-    const topSkills = [...skillCount.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_QUERIES)
-      .map(([skill]) => `${skill} developer`);
+    // Sort by frequency (most common first)
+    let sorted = [...skillCount.entries()]
+      .sort((a, b) => b[1] - a[1]);
 
-    console.log(`[pipeline] Top ${topSkills.length} search queries from ${rows.length} users:`, topSkills);
+    // Apply limit if specified
+    if (limit && limit > 0) {
+      sorted = sorted.slice(0, limit);
+    }
+
+    const topSkills = sorted.map(([skill]) => `${skill} developer`);
+
+    console.log(`[pipeline] ${topSkills.length} search queries from ${rows.length} users:`, topSkills);
     return topSkills;
   } catch (err) {
     console.error('[pipeline] Failed to get user skills, using defaults:', err);
@@ -85,13 +92,16 @@ export async function runFetchCycle(): Promise<{
 
   try {
     // 2. Build dynamic search queries from user skills
-    const searchQueries = await getTopSearchQueries();
-    console.log(`[pipeline] Starting fetch cycle (log #${logId}) with ${searchQueries.length || 'default'} queries`);
+    // Adzuna: capped at 10 queries to stay within 250/day free tier
+    const adzunaQueries = await getTopSearchQueries(ADZUNA_MAX_QUERIES);
+    // LinkedIn: no cap — scraping has no official API limit
+    const linkedinQueries = await getTopSearchQueries();
+    console.log(`[pipeline] Starting fetch cycle (log #${logId}): Adzuna=${adzunaQueries.length || 'default'}, LinkedIn=${linkedinQueries.length || 'default'} queries`);
 
     // 3. Fetch from both sources in parallel
     const [adzunaRaw, linkedinRaw] = await Promise.allSettled([
-      fetchAdzunaJobs(searchQueries.length > 0 ? searchQueries : undefined),
-      fetchLinkedInJobs(searchQueries.length > 0 ? searchQueries : undefined),
+      fetchAdzunaJobs(adzunaQueries.length > 0 ? adzunaQueries : undefined),
+      fetchLinkedInJobs(linkedinQueries.length > 0 ? linkedinQueries : undefined),
     ]);
 
     // Handle partial failures gracefully
