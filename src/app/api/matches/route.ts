@@ -99,19 +99,20 @@ export async function GET(req: NextRequest) {
     }
 
     // Contract rate range filter (user enters daily rate, DB stores annual salary)
-    // Jobs with no salary data still pass through — only exclude jobs with known salary outside range.
+    // Compare as daily rate: divide DB salary by 220 to get daily equivalent.
+    // Jobs with no salary data still pass through.
     if (rate_min) {
       const min = Number(rate_min);
       if (!isNaN(min) && min > 0) {
-        whereClause += ' AND (j.salary_max IS NULL OR j.salary_max >= ?)';
-        params.push(min * 220);
+        whereClause += ' AND (j.salary_max IS NULL OR (j.salary_max / 220) >= ?)';
+        params.push(min);
       }
     }
     if (rate_max) {
       const max = Number(rate_max);
       if (!isNaN(max) && max > 0) {
-        whereClause += ' AND (j.salary_min IS NULL OR j.salary_min <= ?)';
-        params.push(max * 220);
+        whereClause += ' AND (j.salary_min IS NULL OR (j.salary_min / 220) <= ?)';
+        params.push(max);
       }
     }
 
