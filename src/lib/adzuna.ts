@@ -33,7 +33,6 @@ const CONTRACT_SIGNALS = [
   'contractor',
   'freelance',
   'outside ir35',
-  'inside ir35',
   'ir35',
   'day rate',
   'per day',
@@ -43,11 +42,12 @@ const CONTRACT_SIGNALS = [
   '3 month',
 ];
 
-/** Words that indicate a fixed-term employment role (not a true contractor role) */
+/** Words that indicate roles to exclude */
 const EXCLUDE_SIGNALS = [
   'fixed term',
   'fixed-term',
   'ftc',
+  'inside ir35',
 ];
 
 /**
